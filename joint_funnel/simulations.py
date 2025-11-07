@@ -22,10 +22,11 @@ obs_r = ct.obs_r
 num_obs = ct.num_obs
 x_des = ct.x_des
 
-N = 10
+N = ct.N
 
 
-def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi):
+def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test):
+    test_t = 15
     x_traj_sim = np.zeros([N + 1, T, n])
     ## simulate the nominal traj
     x_traj_sim[0] = np.zeros([T, n])
@@ -36,9 +37,12 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi):
         u_traj_sim[t] = u_t
         x_traj_sim[0, t + 1] = Integrator.RK4(dt, x_traj_sim[0, t], u_t, np.zeros(ct.nw))
     ## simulate the traj boundles
-    Q_0 = Q_traj[0, 0:2, 0:2]
+    if is_test == False:
+        Q = Q_traj[0, 0:2, 0:2]
+    else:
+        Q = Q_traj[test_t, 0:2, 0:2]
     # Eigen-decomposition (ascending order from eigh)
-    vals, vecs = LA.eigh(Q_0)
+    vals, vecs = LA.eigh(Q)
     order = vals.argsort()[::-1]  # sort descending so index 0 is largest
     vals = vals[order]
     vecs = vecs[:, order]
@@ -51,15 +55,20 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi):
     DCM = np.array([[np.cos(phi), -np.sin(phi)],
                     [np.sin(phi), np.cos(phi)]])
     ## semi axes length
-    a = np.sqrt(vals[0])
-    b = np.sqrt(vals[1])
+    a = np.sqrt(vals[0])-0.01
+    b = np.sqrt(vals[1])-0.01
     for i in range(N):
         idx = i + 1
         x_0s[i, 0:2] = np.array([a * np.cos(theta[i]), b * np.sin(theta[i])])
         x_0s[i, 0:2] = DCM @ x_0s[i, 0:2]
-        x_0s[i, 0] += ct.x_0[0]
-        x_0s[i, 1] += ct.x_0[1]
-        x_0s[i, 2] = ct.x_0[2]
+        if is_test == False:
+            x_0s[i, 0] += ct.x_0[0]
+            x_0s[i, 1] += ct.x_0[1]
+            x_0s[i, 2] = ct.x_0[2]
+        else:
+            x_0s[i, 0] += x_traj[test_t, 0]
+            x_0s[i, 1] += x_traj[test_t, 1]
+            x_0s[i, 2] = x_traj[test_t, 2]
         ## simulate the traj boundles
         x_traj_sim[idx, 0] = x_0s[i]
 
@@ -71,7 +80,7 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi):
     else:
         plotting_fcn(x_traj_sim, u_traj, Q_traj, False)
 
-    return x_traj_sim[0], u_traj_sim
+    return x_traj_sim, u_traj_sim
 
 
 def plotting_fcn(x_traj, u_traj, Q_traj, is_multi):

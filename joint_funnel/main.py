@@ -14,6 +14,7 @@ jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 from util import const as ct
 from simulations import traj_sim
+from plotting import data_plotting
 
 max_iter = 30
 m = ct.m
@@ -58,9 +59,9 @@ for iter in range(max_iter):
         ## get K0
         K_traj = K0_fcn(x_traj, u_traj)
         ## simulate trajs
-        [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True)
+        [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False)
         ## get true matrices
-        [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim, u_traj_sim, W_traj)
+        [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim[0], u_traj_sim, W_traj)
         A_list = np.array(A_list)
         A_list_sim = np.array(A_list_sim)
         ## compute Y_traj
@@ -69,16 +70,21 @@ for iter in range(max_iter):
             Y_traj[t] = K_traj[t] @ Q_traj[t]
         ## find local Lip const
         gamma_traj = lipschitz_estimator(x_traj, u_traj, mode)
-
+        ## plotting data
+        data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
         #####################end of initialization############################################
     ## funnel update
     [Q_traj, Y_traj, K_traj] = funnel_gen(x_traj, u_traj, A_list_sim, B_list_sim, F_list_sim, Q_traj, Y_traj, C, D, E,
                                           G, gamma_traj)
     ## simulate trajs
-    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True)
+    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True)
+    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False)
     ## get true matrices
-    [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim, u_traj_sim, W_traj)
+    [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim[0], u_traj_sim, W_traj)
     ## traj update
     [x_traj, u_traj, A_list, B_list, F_list] = traj_gen(x_traj, u_traj, Q_traj, K_traj, iter)
     ## find local Lip const
-    gamma_traj = lipschitz_estimator(x_traj_sim, u_traj_sim, mode)
+    gamma_traj = lipschitz_estimator(x_traj_sim[0], u_traj_sim, mode)
+
+    ## plotting data
+    data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)

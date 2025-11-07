@@ -165,7 +165,7 @@ def traj_gen(x_traj, u_traj, Q_traj, K_traj, main_iter) -> tuple:
         ## plotting
         # if iter % 5 == 0:
         #     plotting_fcn(x_traj, u_traj)
-    plotting_fcn(x_traj, u_traj, Q_traj)
+    # plotting_fcn(x_traj, u_traj, Q_traj)
     return x_traj, u_traj, A_list, B_list, F_list
 
 

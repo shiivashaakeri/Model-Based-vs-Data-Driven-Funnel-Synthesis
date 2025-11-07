@@ -146,7 +146,7 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         LMI = cp.vstack((row1, row2, row3, row4, row5))
         I_lmi = np.eye(n + n_p + nw + n + n_q)
         if u_t[0] > 0.0001:
-            constraints.append(LMI >> 0*s_t * I_lmi)
+            constraints.append(LMI >> 1*s_t * I_lmi)
 
         ## obs constraints
         for j in range(num_obs):
