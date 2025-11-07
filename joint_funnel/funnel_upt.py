@@ -114,7 +114,7 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         LMI = cp.bmat([[LMI11, LMI21.T, LMI31.T],
                        [LMI21, LMI22, LMI32.T],
                        [LMI31, LMI32, LMI33]])
-        # if u_t[0] >= 0.01:
+        # if u_t[0] >= 0.:
         #     constraints.append(LMI >>0* s_t * np.eye(2 * n + nw))
 
         ## Nonlinear DLMI constraints
@@ -145,7 +145,7 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         row5 = cp.hstack((LMI51, LMI52, LMI53, LMI54, LMI55))
         LMI = cp.vstack((row1, row2, row3, row4, row5))
         I_lmi = np.eye(n + n_p + nw + n + n_q)
-        if u_t[0] >= 0.001:
+        if u_t[0] > 0.0001:
             constraints.append(LMI >> 0*s_t * I_lmi)
 
         ## obs constraints

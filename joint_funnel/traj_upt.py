@@ -59,7 +59,7 @@ def cost_subproblem_fun(x_traj, u_traj, x_des, d, w, v, s):
     for t in range(T - 1):
         ## for objective
         # f0 += cp.norm(x_traj[t,0:2] + d[t,0:2],2)
-        f0 += cp.norm(u_traj[t,0] + w[t,0], 2)
+        f0 += cp.norm(u_traj[t, 0] + w[t, 0], 2)
         ## for constraints
         f0 += 1000 * cp.norm(v[t], 1)
         ## for obs
@@ -121,8 +121,8 @@ def solve_subproblem(A_list, B_list, trajs, x_des) -> tuple:
             h_j = obs_r ** 2 - LA.norm(x_t[0:2] - obs_j, 2) ** 2
             a = - 2 * (x_t[0:2] - obs_j)
             LHS = h_j + a @ d_t[0:2]  ## obs constraints
-            Q_t_root = sqrtm(Q_t[0:2,0:2])
-            LHS += LA.norm(Q_t_root @ a,2)
+            Q_t_root = sqrtm(Q_t[0:2, 0:2])
+            LHS += LA.norm(Q_t_root @ a, 2)
             constraints.append(LHS <= s_t[j])
             # constraints.append(h_j - 2 * (x_t[0:2] - obs_j) @ d_t[0:2] <= s_t[j])
             constraints.append(s_t[j] >= 0)
@@ -143,7 +143,7 @@ def traj_gen(x_traj, u_traj, Q_traj, K_traj, main_iter) -> tuple:
         max_iter = 20
     else:
         max_iter = 20
-    W_traj = ct.W_traj
+    W_traj = np.zeros([T - 1, ct.nw])
     subproblem_cost_old = 0
     for iter in range(max_iter):
         [A_list, B_list, F_list] = jax.vmap(
@@ -171,7 +171,7 @@ def traj_gen(x_traj, u_traj, Q_traj, K_traj, main_iter) -> tuple:
 
 def plotting_fcn(x_traj, u_traj, Q_traj):
     fig, ax = plt.subplots()
-    for t in range(T-1):
+    for t in range(T - 1):
         theta = x_traj[t, 2]
         leng = 0.4
         heading_vector = np.array([[x_traj[t, 0], x_traj[t, 1]],

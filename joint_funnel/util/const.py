@@ -21,14 +21,16 @@ dt = tf / T
 
 gamma1 = 0.4
 ## initial and final states
-x_0 = np.array([1.0, 1.0, 0.0])
-x_des = np.array([10, 4, -np.pi])
+x_0 = np.array([1.0, 1.0,0])
+x_des = np.array([10, 5, -np.pi])
 x_traj = np.zeros([T, n])
 x_traj[0] = x_0
 ## initial control
 u_traj = np.zeros([T - 1, m])
 ## process noise
-W_traj = np.zeros([T - 1, nw])
+# W_traj = np.zeros([T - 1, nw])
+rng = np.random.default_rng()
+W_traj = rng.uniform(low=-1.0, high=1.0, size=(T-1, nw))
 ## initial funnel
 Q0_traj = np.zeros([T, n, n])
 K0_traj = np.zeros([T-1,m,n])
