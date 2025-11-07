@@ -25,7 +25,7 @@ x_des = ct.x_des
 N = ct.N
 
 
-def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test):
+def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test, is_plotting):
     test_t = 15
     x_traj_sim = np.zeros([N + 1, T, n])
     ## simulate the nominal traj
@@ -55,8 +55,8 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test):
     DCM = np.array([[np.cos(phi), -np.sin(phi)],
                     [np.sin(phi), np.cos(phi)]])
     ## semi axes length
-    a = np.sqrt(vals[0])-0.01
-    b = np.sqrt(vals[1])-0.01
+    a = np.sqrt(vals[0]) - 0.01
+    b = np.sqrt(vals[1]) - 0.01
     for i in range(N):
         idx = i + 1
         x_0s[i, 0:2] = np.array([a * np.cos(theta[i]), b * np.sin(theta[i])])
@@ -74,11 +74,15 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test):
 
         for t in range(T - 1):
             u_t = u_traj[t] + K_traj[t] @ (x_traj_sim[idx, t] - x_traj[t])
-            x_traj_sim[idx, t + 1] = Integrator.RK4(dt, x_traj_sim[idx, t], u_t, W_traj[t])
-    if is_multi == True:
-        plotting_fcn(x_traj_sim, u_traj, Q_traj, True)
-    else:
-        plotting_fcn(x_traj_sim, u_traj, Q_traj, False)
+            if is_plotting == True:
+                x_traj_sim[idx, t + 1] = Integrator.RK4(dt, x_traj_sim[idx, t], u_t, W_traj[t])
+            else:
+                x_traj_sim[idx, t + 1] = Integrator.RK4(dt, x_traj_sim[idx, t], u_t, np.zeros(ct.nw))
+    if is_plotting == True:
+        if is_multi == True:
+            plotting_fcn(x_traj_sim, u_traj, Q_traj, True)
+        else:
+            plotting_fcn(x_traj_sim, u_traj, Q_traj, False)
 
     return x_traj_sim, u_traj_sim
 

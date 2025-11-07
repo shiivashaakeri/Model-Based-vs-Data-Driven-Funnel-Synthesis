@@ -69,8 +69,8 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
     ## terminal constraints
     # constraints.append(Q[-2] << ct.Q0_traj[-1])  ## fixed final funnel
     # constraints.append(mu_Q[-1]<= 0.8)
-    print(gamma_traj)
-    print(u_traj[:,0])
+    # print(gamma_traj)
+    # print(u_traj[:,0])
     for t in range(T - 1):
         x_t = x_traj[t]
         u_t = u_traj[t]

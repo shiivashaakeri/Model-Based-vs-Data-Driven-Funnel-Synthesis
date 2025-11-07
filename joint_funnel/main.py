@@ -59,7 +59,7 @@ for iter in range(max_iter):
         ## get K0
         K_traj = K0_fcn(x_traj, u_traj)
         ## simulate trajs
-        [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False)
+        [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, False)
         ## get true matrices
         [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim[0], u_traj_sim, W_traj)
         A_list = np.array(A_list)
@@ -77,8 +77,9 @@ for iter in range(max_iter):
     [Q_traj, Y_traj, K_traj] = funnel_gen(x_traj, u_traj, A_list_sim, B_list_sim, F_list_sim, Q_traj, Y_traj, C, D, E,
                                           G, gamma_traj)
     ## simulate trajs
-    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True)
-    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False)
+    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True, True)
+    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, True)
+    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, False)
     ## get true matrices
     [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim[0], u_traj_sim, W_traj)
     ## traj update
