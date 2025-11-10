@@ -79,12 +79,14 @@ for iter in range(max_iter):
                                           G, gamma_traj)
 
     ## plotting flags
-    plt_flag = False
     if iter % 4 ==0 and iter != 0:
         plt_flag = True
+    ## plotting data
+    if plt_flag == True:
+        data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
 
     ## simulate trajs
-    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True, plt_flag)
+    # [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True, plt_flag)
     # [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, True)
     [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, plt_flag)
     ## get true matrices
@@ -95,5 +97,4 @@ for iter in range(max_iter):
     input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim[0], K_traj, Q_traj, u_traj_sim]
     gamma_traj = lipschitz_estimator(input_list, mode)
 
-    ## plotting data
-    data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
+

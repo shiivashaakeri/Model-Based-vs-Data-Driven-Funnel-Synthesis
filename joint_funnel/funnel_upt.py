@@ -33,9 +33,9 @@ obs_r = ct.obs_r
 gamma1 = ct.gamma1
 
 
-def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s):
+def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K, s,s0,sf):
     f = 0
-
+    f+= 1000 *(s0 + sf)
     for t in range(T):
         ## state funnel penalty
         f += w_Q * mu_Q[t]
@@ -46,28 +46,27 @@ def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s):
             ## regularization for the funnels
             f += w_tr * (cp.norm(Q[t] - Q_traj[t], "fro") + cp.norm(Y[t] - Y_traj[t], "fro"))
             ## slack penalty
-            f += 1000000 *  -(s[t])
+            f += 1000000 * -(s[t])
 
     return f
 
 
-
-
-
-
-
-def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
+def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G, gamma_traj):
     Q = cp.Variable([T, n, n])
     Y = cp.Variable([T - 1, m, n])  ## Y = BK
-    s = cp.Variable(T-1 , nonpos=True)
+    s0 = cp.Variable(nonneg=True)
+    sf = cp.Variable(nonneg=True)
+    s_LMI = cp.Variable(T - 1, nonpos=True)
     mu_Q = cp.Variable(T, nonneg=True)
     mu_K = cp.Variable(T - 1, nonneg=True)
     mu_P = cp.Variable(T - 1, pos=True)
     ## Initial constraints
-    constraints = [Q[0] >> ct.Q0_traj[0]]
-
+    # constraints = [Q[0] >> ct.Q0_traj[0]]
+    constraints = [ct.Q0_traj[0] - Q[0] << s0 * np.eye(n)]
+    # constraints = [Q[0] >> 0]
     ## terminal constraints
-    constraints.append(Q[-2] << ct.Q0_traj[-1])  ## fixed final funnel
+    # constraints.append(Q[-2] << ct.Q0_traj[-1])  ## fixed final funnel
+    constraints.append(Q[-2] - ct.Q0_traj[-1]<< sf * np.eye(n))  ## fixed final funnel
     # constraints.append(mu_Q[-1]<= 0.8)
     # print(gamma_traj)
     # print(u_traj[:,0])
@@ -83,7 +82,7 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
         A_t = A_traj[t]
         B_t = B_traj[t]
         F_t = F_traj[t]
-        s_t = s[t]
+        s_LMI_t = s_LMI[t]
         gamma_t = gamma_traj[t]
         ## to insure the invertibility of Q
         eps = 0.000000001
@@ -95,7 +94,7 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
         # constraints.append(Q_t - mu_Q_t * I_Q >> 0)
         ## for minimize
         constraints.append(Q_t - mu_Q_t * I_Q << 0)
-        constraints.append(mu_Q_t <= 0.5)
+        # constraints.append(mu_Q_t <= 0.5)
 
         ## control funnel constraints
         I_K = np.eye(m)
@@ -115,7 +114,7 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
                        [LMI21, LMI22, LMI32.T],
                        [LMI31, LMI32, LMI33]])
         # if u_t[0] >= 0.:
-        #     constraints.append(LMI >>0* s_t * np.eye(2 * n + nw))
+        #     constraints.append(LMI >>1* s_LMI_t * np.eye(2 * n + nw))
 
         ## Nonlinear DLMI constraints
         LMI11 = alpha * Q_t - lambda_omega * Q_t
@@ -146,7 +145,7 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
         LMI = cp.vstack((row1, row2, row3, row4, row5))
         I_lmi = np.eye(n + n_p + nw + n + n_q)
         if u_t[0] > 0.000001:
-            constraints.append(LMI >> 1*s_t * I_lmi)
+            constraints.append(LMI >> 1 * s_LMI_t * I_lmi)
 
         ## obs constraints
         for j in range(num_obs):
@@ -174,17 +173,15 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
             constraints.append(B_matrix >> 0)
         ## control constraints
         ## u >= 0
-        a_t = np.array([[-1],[0]])
+        a_t = np.array([[-1], [0]])
         b_t = 0.0
-        BB11 = np.array([(b_t - a_t.T @ u_t) ])
+        BB11 = np.array([(b_t - a_t.T @ u_t)])
         BB_row1 = cp.hstack((BB11, a_t.T @ Y_t))
         BB_row2 = cp.hstack((Y_t.T @ a_t, Q_t))
         BB_matrix = cp.vstack((BB_row1, BB_row2))
         constraints.append(BB_matrix >> 0)
 
-
-
-    f0 = funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s)
+    f0 = funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K, s_LMI,s0,sf)
     problem = cp.Problem(cp.Minimize(f0), constraints)
     problem.solve(solver=cp.CLARABEL)
     if Q.value.any() != None:
@@ -194,17 +191,18 @@ def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D,
     for t in range(T - 1):
         K_traj[t] = Y_traj[t] @ LA.inv(Q_traj[t])
 
-    return Q_traj, Y_traj, K_traj,problem.value
+    return Q_traj, Y_traj, K_traj, problem.value
 
 
-def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
-    max_iter = 5
+def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G, gamma_traj):
+    max_iter = 1
     cost_list = np.zeros(max_iter)
     for iter in range(max_iter):
-        [Q_traj, Y_traj, K_traj,prob_cost] = funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G, gamma_traj)
+        [Q_traj, Y_traj, K_traj, prob_cost] = funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C,
+                                                             D, E, G, gamma_traj)
         print("Funnel upt iteration:  ", iter + 1, "problem cost:    ", prob_cost)
         cost_list[iter] = prob_cost
         if iter > 0:
-            if np.abs(cost_list[iter - 1]  - cost_list[iter]) < 1:
+            if np.abs(cost_list[iter - 1] - cost_list[iter]) < 1:
                 break
     return Q_traj, Y_traj, K_traj

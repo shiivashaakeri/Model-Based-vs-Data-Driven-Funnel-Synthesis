@@ -53,13 +53,14 @@ linearization_jit = jax.jit(linearization, static_argnums=0)
 
 def cost_subproblem_fun(x_traj, u_traj, x_des, d, w, v, s):
     ## terminal cost
-    f0 = 1000 * cp.norm(x_traj[T - 1, 0:2] + d[T - 1, 0:2] - x_des[0:2], 2)
+    f0 = 1000 * cp.norm(x_traj[T - 1] + d[T - 1] - x_des, 2)
 
     ## running cost
     for t in range(T - 1):
         ## for objective
-        # f0 += cp.norm(x_traj[t,0:2] + d[t,0:2],2)
-        f0 += cp.norm(u_traj[t, 0] + w[t, 0], 2)
+        f0 += cp.norm(x_traj[t] + d[t] - x_des,2)*0.4*(t)
+        # f0 += cp.norm(x_traj[t,2] + d[t,2],2)
+        f0 += cp.norm(u_traj[t] + w[t], 2)
         ## for constraints
         f0 += 1000 * cp.norm(v[t], 1)
         ## for obs
@@ -165,7 +166,7 @@ def traj_gen(x_traj, u_traj, Q_traj, K_traj, main_iter) -> tuple:
         ## plotting
         # if iter % 5 == 0:
         #     plotting_fcn(x_traj, u_traj)
-    # plotting_fcn(x_traj, u_traj, Q_traj)
+    plotting_fcn(x_traj, u_traj, Q_traj)
     return x_traj, u_traj, A_list, B_list, F_list
 
 

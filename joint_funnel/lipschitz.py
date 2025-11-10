@@ -16,8 +16,9 @@ m = ct.m
 nw = ct.nw
 C = ct.C_u
 D = ct.D_u
-gamma_min = 0.001
-gamma_max = 0.05
+gamma_min = 0.0001
+gamma_default = 0.001
+gamma_max = 0.08
 
 
 # input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim, K_traj, Q_traj, u_traj_sim]
@@ -35,7 +36,7 @@ def lipschitz_estimator(input_list, mode):
     gamma_traj = np.zeros(T - 1)
 
     for t in range(T - 1):
-        gamma_traj[t] = gamma_min
+        gamma_traj[t] = gamma_default
         ## default value if K is all zeros
         if (K_traj[t] == np.zeros([m, n])).all():
             continue
