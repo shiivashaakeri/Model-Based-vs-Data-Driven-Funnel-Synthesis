@@ -17,7 +17,7 @@ m = 2
 nw = 2
 n_p = 2
 n_q = 2
-tf = 8
+tf = 7
 T = 61
 dt = tf / T
 time_traj = np.linspace(0, tf, T)
@@ -39,7 +39,7 @@ Q0_traj = np.zeros([T, n, n])
 K0_traj = np.zeros([T - 1, m, n])
 for t in range(T):
     Q0_traj[t] = np.diag([1, 1, 0.1]) * 0.1
-Q0_traj[T - 1] = np.diag([1, 1, 0.1]) * 0.01
+Q0_traj[-1] = np.diag([1, 1, 0.1]) * 0.1
 
 ########### channel selections
 ## Unicycle

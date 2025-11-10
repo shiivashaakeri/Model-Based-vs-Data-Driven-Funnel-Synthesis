@@ -69,23 +69,31 @@ for iter in range(max_iter):
         for t in range(T - 1):
             Y_traj[t] = K_traj[t] @ Q_traj[t]
         ## find local Lip const
-        gamma_traj = lipschitz_estimator(x_traj, u_traj, mode)
-        ## plotting data
-        data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
+        input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim[0], K_traj, Q_traj, u_traj_sim]
+        gamma_traj = lipschitz_estimator(input_list, mode)
+        # ## plotting data
+        # data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
         #####################end of initialization############################################
     ## funnel update
     [Q_traj, Y_traj, K_traj] = funnel_gen(x_traj, u_traj, A_list_sim, B_list_sim, F_list_sim, Q_traj, Y_traj, C, D, E,
                                           G, gamma_traj)
+
+    ## plotting flags
+    plt_flag = False
+    if iter % 4 ==0 and iter != 0:
+        plt_flag = True
+
     ## simulate trajs
-    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True, True)
-    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, True)
-    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, False)
+    [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, True, plt_flag)
+    # [_, _] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, True)
+    [x_traj_sim, u_traj_sim] = traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, True, False, plt_flag)
     ## get true matrices
     [A_list_sim, B_list_sim, F_list_sim] = linearization.linearize(x_traj_sim[0], u_traj_sim, W_traj)
     ## traj update
     [x_traj, u_traj, A_list, B_list, F_list] = traj_gen(x_traj, u_traj, Q_traj, K_traj, iter)
     ## find local Lip const
-    gamma_traj = lipschitz_estimator(x_traj_sim[0], u_traj_sim, mode)
+    input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim[0], K_traj, Q_traj, u_traj_sim]
+    gamma_traj = lipschitz_estimator(input_list, mode)
 
     ## plotting data
     data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)

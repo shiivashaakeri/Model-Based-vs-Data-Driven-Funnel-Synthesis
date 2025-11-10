@@ -13,6 +13,6 @@ def unicycle(x_t: jnp.array, u_t: jnp.array, W_t: jnp.array) -> jnp.array:
     omega = u_t[1]
     ## type 1 uncertainty
     x_dot = jnp.array([v * jnp.cos(theta) + 0.1 * W_t[0],
-                       v * jnp.sin(theta) + 0.4 * W_t[1],
+                       v * jnp.sin(theta) + 0.2 * W_t[1],
                        omega ])
     return x_dot

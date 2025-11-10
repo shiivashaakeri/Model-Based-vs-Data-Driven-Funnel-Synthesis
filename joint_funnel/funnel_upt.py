@@ -56,7 +56,7 @@ def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s):
 
 
 
-def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
+def funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
     Q = cp.Variable([T, n, n])
     Y = cp.Variable([T - 1, m, n])  ## Y = BK
     s = cp.Variable(T-1 , nonpos=True)
@@ -67,7 +67,7 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
     constraints = [Q[0] >> ct.Q0_traj[0]]
 
     ## terminal constraints
-    # constraints.append(Q[-2] << ct.Q0_traj[-1])  ## fixed final funnel
+    constraints.append(Q[-2] << ct.Q0_traj[-1])  ## fixed final funnel
     # constraints.append(mu_Q[-1]<= 0.8)
     # print(gamma_traj)
     # print(u_traj[:,0])
@@ -145,7 +145,7 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         row5 = cp.hstack((LMI51, LMI52, LMI53, LMI54, LMI55))
         LMI = cp.vstack((row1, row2, row3, row4, row5))
         I_lmi = np.eye(n + n_p + nw + n + n_q)
-        if u_t[0] > 0.0001:
+        if u_t[0] > 0.000001:
             constraints.append(LMI >> 1*s_t * I_lmi)
 
         ## obs constraints
@@ -193,6 +193,18 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
     K_traj = np.zeros([T - 1, m, n])
     for t in range(T - 1):
         K_traj[t] = Y_traj[t] @ LA.inv(Q_traj[t])
-    print("funnel problem cost: ",problem.value)
 
+    return Q_traj, Y_traj, K_traj,problem.value
+
+
+def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
+    max_iter = 5
+    cost_list = np.zeros(max_iter)
+    for iter in range(max_iter):
+        [Q_traj, Y_traj, K_traj,prob_cost] = funnel_problem(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G, gamma_traj)
+        print("Funnel upt iteration:  ", iter + 1, "problem cost:    ", prob_cost)
+        cost_list[iter] = prob_cost
+        if iter > 0:
+            if np.abs(cost_list[iter - 1]  - cost_list[iter]) < 1:
+                break
     return Q_traj, Y_traj, K_traj
