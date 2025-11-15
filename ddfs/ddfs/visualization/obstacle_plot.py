@@ -1,0 +1,1 @@
+# draw obstacles in workspace
