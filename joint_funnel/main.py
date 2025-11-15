@@ -1,20 +1,15 @@
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
-from util import Integrator, dynamics, linearization
-import jax
 import cvxpy as cp
-from traj_upt import traj_gen, plotting_fcn
+import jax
+import numpy as np
 from funnel_upt import funnel_gen
 from lipschitz import lipschitz_estimator
+from traj_upt import traj_gen
+from util import linearization
 
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
-from util import const as ct
-from simulations import traj_sim
-from plotting import data_plotting
+jax.config.update("jax_enable_x64", True)
+from plotting import data_plotting  # noqa: E402
+from simulations import traj_sim  # noqa: E402
+from util import const as ct  # noqa: E402
 
 max_iter = 30
 m = ct.m
@@ -48,7 +43,7 @@ def K0_fcn(x_traj, u_traj):
 
 
 ## Main loop
-for iter in range(max_iter):
+for iter in range(max_iter):  # noqa: A001
     print("Main iteration", iter + 1)
     if iter == 0:
         #####################initialize traj and K0############################################
@@ -75,14 +70,15 @@ for iter in range(max_iter):
         # data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
         #####################end of initialization############################################
     ## funnel update
-    [Q_traj, Y_traj, K_traj] = funnel_gen(x_traj, u_traj, A_list_sim, B_list_sim, F_list_sim, Q_traj, Y_traj, C, D, E,
-                                          G, gamma_traj)
+    [Q_traj, Y_traj, K_traj] = funnel_gen(
+        x_traj, u_traj, A_list_sim, B_list_sim, F_list_sim, Q_traj, Y_traj, C, D, E, G, gamma_traj
+    )
 
     ## plotting flags
-    if iter % 4 ==0 and iter != 0:
+    if iter % 4 == 0 and iter != 0:
         plt_flag = True
     ## plotting data
-    if plt_flag == True:
+    if plt_flag:
         data_plotting(x_traj_sim, u_traj, K_traj, Q_traj)
 
     ## simulate trajs
@@ -96,5 +92,3 @@ for iter in range(max_iter):
     ## find local Lip const
     input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim[0], K_traj, Q_traj, u_traj_sim]
     gamma_traj = lipschitz_estimator(input_list, mode)
-
-

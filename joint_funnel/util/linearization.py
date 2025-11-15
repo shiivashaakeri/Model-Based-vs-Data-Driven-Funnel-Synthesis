@@ -1,14 +1,8 @@
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
-from matplotlib.patches import Ellipse
-from scipy.linalg import sqrtm
-from .Integrator import RK4
-from .const import dt,T
 import jax
-import cvxpy as cp
+
+from .const import T, dt
+from .Integrator import RK4
+
 jax.config.update('jax_enable_x64', True)
 
 

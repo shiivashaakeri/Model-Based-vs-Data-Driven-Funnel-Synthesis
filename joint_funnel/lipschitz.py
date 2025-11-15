@@ -1,14 +1,11 @@
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
-from util import Integrator, dynamics
 import jax
-
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
+import numpy as np
+import scipy.linalg as la
+from numpy import linalg as LA  # noqa: N812
+from util import Integrator
 from util import const as ct
+
+jax.config.update("jax_enable_x64", True)
 
 T = ct.T
 n = ct.n
@@ -22,7 +19,7 @@ gamma_max = 0.08
 
 
 # input_list = [A_list_sim, B_list_sim, F_list_sim, x_traj_sim, K_traj, Q_traj, u_traj_sim]
-def lipschitz_estimator(input_list, mode):
+def lipschitz_estimator(input_list, mode):  # noqa: ARG001
     RK4_jit = jax.jit(Integrator.RK4, static_argnums=0)
     ## unpack data
     A_list_sim = input_list[0]
@@ -74,10 +71,8 @@ def lipschitz_estimator(input_list, mode):
             mu = (C + D @ K_t) @ eta_sample_t_s
             gamma_t[s] = LA.norm(LHS) / LA.norm(mu)
         gamma_traj[t] = np.max(gamma_t) / 1
-        if gamma_traj[t] < gamma_min:
-            gamma_traj[t] = gamma_min
-        if gamma_traj[t] >= gamma_max:
-            gamma_traj[t] = gamma_max
+        gamma_traj[t] = max(gamma_traj[t], gamma_min)
+        gamma_traj[t] = min(gamma_max, gamma_traj[t])
         print("Lip est progress: ", t / T * 100, "Lip_t: ", gamma_traj[t])
     return gamma_traj / 1
 

@@ -1,24 +1,17 @@
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
-from matplotlib.patches import Ellipse
-from scipy.linalg import sqrtm
-from util import Integrator, dynamics
-import jax
-import cvxpy as cp
+from numpy import linalg as LA  # noqa: N812
 from util import const as ct
 
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
+jax.config.update("jax_enable_x64", True)
 
 T = ct.T
 N = ct.N
 time_traj = ct.time_traj
 
 
-def data_plotting(x_traj_sim, u_traj_sim, K_traj, Q_traj):
+def data_plotting(x_traj_sim, u_traj_sim, K_traj, Q_traj):  # noqa: ARG001
     ## construct the funnel bounds
     x1_bounds = np.zeros([T, 2])
     x2_bounds = np.zeros([T, 2])
@@ -39,19 +32,18 @@ def data_plotting(x_traj_sim, u_traj_sim, K_traj, Q_traj):
     plt.subplot(2, 1, 1)
     ## plot state
     for i in range(N + 1):
-        plt.plot(time_traj[0:T - 1], x_traj_sim[i, 0:T - 1, 0])
-    plt.plot(time_traj[0:T - 1], x1_bounds[0:T - 1, 0], "r", linewidth=2, label="x upper bound")
-    plt.plot(time_traj[0:T - 1], x1_bounds[0:T - 1, 1], "r", linewidth=2, label="x lower bound")
+        plt.plot(time_traj[0 : T - 1], x_traj_sim[i, 0 : T - 1, 0])
+    plt.plot(time_traj[0 : T - 1], x1_bounds[0 : T - 1, 0], "r", linewidth=2, label="x upper bound")
+    plt.plot(time_traj[0 : T - 1], x1_bounds[0 : T - 1, 1], "r", linewidth=2, label="x lower bound")
     plt.legend()
     plt.xlabel("time")
     plt.ylabel("x")
     plt.subplot(2, 1, 2)
     for i in range(N + 1):
-        plt.plot(time_traj[0:T - 1], x_traj_sim[i, 0:T - 1, 1])
-    plt.plot(time_traj[0:T - 1], x2_bounds[0:T - 1, 0], "r", linewidth=2, label="y upper bound")
-    plt.plot(time_traj[0:T - 1], x2_bounds[0:T - 1, 1], "r", linewidth=2, label="y lower bound")
+        plt.plot(time_traj[0 : T - 1], x_traj_sim[i, 0 : T - 1, 1])
+    plt.plot(time_traj[0 : T - 1], x2_bounds[0 : T - 1, 0], "r", linewidth=2, label="y upper bound")
+    plt.plot(time_traj[0 : T - 1], x2_bounds[0 : T - 1, 1], "r", linewidth=2, label="y lower bound")
     plt.xlabel("time")
     plt.ylabel("y")
     plt.legend()
     plt.show()
-    return

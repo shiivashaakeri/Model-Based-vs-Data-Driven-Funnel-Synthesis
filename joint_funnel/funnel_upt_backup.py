@@ -1,16 +1,10 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import cvxpy as cp
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
-
-from util import Integrator, dynamics
 import jax
+import numpy as np
+from numpy import linalg as LA  # noqa: N812
 
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
-from util import const as ct
+jax.config.update("jax_enable_x64", True)
+from util import const as ct  # noqa: E402
 
 T = ct.T
 n = ct.n
@@ -33,7 +27,7 @@ obs_r = ct.obs_r
 gamma1 = ct.gamma1
 
 
-def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s):
+def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K, s):
     f = 0
 
     for t in range(T):
@@ -46,23 +40,17 @@ def funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s):
             ## regularization for the funnels
             f += w_tr * (cp.norm(Q[t] - Q_traj[t], "fro") + cp.norm(Y[t] - Y_traj[t], "fro"))
             ## slack penalty
-            f += 1000000 *  -(s[t])
+            f += 1000000 * -(s[t])
 
     return f
 
 
-
-
-
-
-
-def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G,gamma_traj):
+def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, G, gamma_traj):  # noqa: PLR0915, ARG001
     Q = cp.Variable([T, n, n])
     Y = cp.Variable([T - 1, m, n])  ## Y = BK
-    s = cp.Variable(T-1 , nonpos=True)
+    s = cp.Variable(T - 1, nonpos=True)
     mu_Q = cp.Variable(T, nonneg=True)
     mu_K = cp.Variable(T - 1, nonneg=True)
-    mu_P = cp.Variable(T - 1, pos=True)
     ## Initial constraints
     constraints = [Q[0] >> ct.Q0_traj[0]]
 
@@ -77,12 +65,10 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         Y_t = Y[t]
         mu_Q_t = mu_Q[t]
         mu_K_t = mu_K[t]
-        mu_P_t = mu_P[t]
         A_t = A_traj[t]
         B_t = B_traj[t]
         F_t = F_traj[t]
         s_t = s[t]
-        gamma_t = np.maximum(gamma_traj[t],1)
         ## to insure the invertibility of Q
         eps = 0.000000001
         # constraints.append(Q_t >> np.eye(n) * eps)
@@ -109,11 +95,9 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         LMI22 = lambda_omega * np.eye(nw)  ## nw b nw
         LMI32 = F_t
         LMI33 = Q_tp1  ## n by n
-        LMI = cp.bmat([[LMI11, LMI21.T, LMI31.T],
-                       [LMI21, LMI22, LMI32.T],
-                       [LMI31, LMI32, LMI33]])
+        LMI = cp.bmat([[LMI11, LMI21.T, LMI31.T], [LMI21, LMI22, LMI32.T], [LMI31, LMI32, LMI33]])
         if u_t[0] >= 0.01:
-            constraints.append(LMI >>0* s_t * np.eye(2 * n + nw))
+            constraints.append(LMI >> 0 * s_t * np.eye(2 * n + nw))
 
         ## Nonlinear DLMI constraints
         # LMI11 = alpha * Q_t - lambda_omega * Q_t
@@ -149,9 +133,9 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
         ## obs constraints
         for j in range(num_obs):
             obs_j = obs[j]
-            h_j = obs_r ** 2 - LA.norm(x_t[0:2] - obs_j, 2) ** 2
-            a_t = - 2 * (x_t[0:2] - obs_j)
-            a_t_col = np.reshape(a_t, [2, 1])
+            h_j = obs_r**2 - LA.norm(x_t[0:2] - obs_j, 2) ** 2
+            a_t = -2 * (x_t[0:2] - obs_j)
+            a_t_col = np.reshape(a_t, [2, 1])  # noqa: F841
             b_t = a_t @ x_t[0:2] - h_j
             # B_row1 = cp.hstack(((b_t - a_t @ x_t[0:2]) ** 2, a_t @ Q_t[0:2, 0:2].T))
             # B_row2 = cp.hstack((Q_t[0:2, 0:2] @ a_t_col, Q_t[0:2, 0:2]))
@@ -159,38 +143,36 @@ def funnel_gen(x_traj, u_traj, A_traj, B_traj, F_traj, Q_traj, Y_traj, C, D, E, 
             # constraints.append(B_matrix >> 0)
 
             Q2 = Q_t[0:2, 0:2]
-            a_row = cp.Constant(a_t).reshape((1, 2))  # 1×2
-            x2 = x_t[0:2].reshape((2, 1))  # 2×1 numpy → 2×1
+            a_row = cp.Constant(a_t).reshape((1, 2))  # 1x2
+            x2 = x_t[0:2].reshape((2, 1))  # 2x1 numpy → 2x1
 
-            B11 = (b_t - a_row @ x2) ** 2  # 1×1
-            B12 = a_row @ Q2.T  # 1×2
+            B11 = (b_t - a_row @ x2) ** 2  # 1x1
+            B12 = a_row @ Q2.T  # 1x2
 
-            B_row1 = cp.hstack((B11, B12))  # 1×3
-            B_row2 = cp.hstack((Q2 @ a_row.T, Q2))  # (2×1) hstack (2×2) → 2×3
+            B_row1 = cp.hstack((B11, B12))  # 1x3
+            B_row2 = cp.hstack((Q2 @ a_row.T, Q2))  # (2x1) hstack (2x2) → 2x3
 
-            B_matrix = cp.vstack((B_row1, B_row2))  # 3×3 PSD
+            B_matrix = cp.vstack((B_row1, B_row2))  # 3x3 PSD  # noqa: F841
             # constraints.append(B_matrix >> 0)
         ## control constraints
         ## u >= 0
-        a_t = np.array([[-1],[0]])
+        a_t = np.array([[-1], [0]])
         b_t = 0.0
-        BB11 = np.array([(b_t - a_t.T @ u_t) ])
+        BB11 = np.array([(b_t - a_t.T @ u_t)])
         BB_row1 = cp.hstack((BB11, a_t.T @ Y_t))
         BB_row2 = cp.hstack((Y_t.T @ a_t, Q_t))
         BB_matrix = cp.vstack((BB_row1, BB_row2))
         constraints.append(BB_matrix >> 0)
 
-
-
-    f0 = funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K,s)
+    f0 = funnel_cost(Q, Q_traj, Y, Y_traj, mu_Q, mu_K, s)
     problem = cp.Problem(cp.Minimize(f0), constraints)
     problem.solve(solver=cp.CLARABEL)
-    if Q.value.any() != None:
+    if Q.value.any() is not None:
         Q_traj = Q.value
         Y_traj = Y.value
     K_traj = np.zeros([T - 1, m, n])
     for t in range(T - 1):
         K_traj[t] = Y_traj[t] @ LA.inv(Q_traj[t])
-    print("funnel problem cost: ",problem.value)
+    print("funnel problem cost: ", problem.value)
 
     return Q_traj, Y_traj, K_traj

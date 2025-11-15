@@ -1,8 +1,7 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import functools
-from numpy.linalg import inv
 import cvxpy as cp
+import matplotlib.pyplot as plt
+import numpy as np
+from numpy.linalg import inv
 
 # Problem data (given)
 n = 4  ## number of states
@@ -59,7 +58,7 @@ for i in range(N - 1):
     u_k = K_matrices[i, :] @ x_trajectory_lqr[i, :]
     u_history_lqr[i, :] = u_k
     x_trajectory_lqr[i + 1, :] = A @ x_trajectory_lqr[i, :] + B @ u_k
-# as a result of your code, the P_matrices list defined above should contain the ten P matrices in increasing order of time,
+# as a result of your code, the P_matrices list defined above should contain the ten P matrices in increasing order of time,  # noqa: E501
 # and the K_matrices list defined above should contain the nine K matrices in increasing order of time.
 #
 # x_trajectory_lqr should contain the complete state trajectory (with the k-th row of x_trajectory_lqr containing

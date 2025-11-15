@@ -1,17 +1,12 @@
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import signal
-import scipy.linalg as la
-from numpy import linalg as LA
 from matplotlib.patches import Ellipse
-from scipy.linalg import sqrtm
-from util import Integrator, dynamics
-import jax
-import cvxpy as cp
+from numpy import linalg as LA  # noqa: N812
+from util import Integrator
 from util import const as ct
 
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
+jax.config.update("jax_enable_x64", True)
 
 T = ct.T
 n = ct.n
@@ -37,17 +32,14 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test, is_plott
         u_traj_sim[t] = u_t
         x_traj_sim[0, t + 1] = Integrator.RK4(dt, x_traj_sim[0, t], u_t, np.zeros(ct.nw))
     ## simulate the traj boundles
-    if is_test == False:
-        Q = Q_traj[0, 0:2, 0:2]
-    else:
-        Q = Q_traj[test_t, 0:2, 0:2]
+    Q = Q_traj[0, 0:2, 0:2] if not is_test else Q_traj[test_t, 0:2, 0:2]
     # Eigen-decomposition (ascending order from eigh)
     vals, vecs = LA.eigh(Q)
     order = vals.argsort()[::-1]  # sort descending so index 0 is largest
     vals = vals[order]
     vecs = vecs[:, order]
     vmax = vecs[:, 0]
-    angle_deg = np.degrees(np.arctan2(vmax[1], vmax[0]))
+    angle_deg = np.degrees(np.arctan2(vmax[1], vmax[0]))  # noqa: F841
     x_0s = np.zeros([N, n])
     phi = np.arctan2(vmax[1], vmax[0])
     theta = np.linspace(0, 2 * np.pi, N)
@@ -61,7 +53,7 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test, is_plott
         idx = i + 1
         x_0s[i, 0:2] = np.array([a * np.cos(theta[i]), b * np.sin(theta[i])])
         x_0s[i, 0:2] = DCM @ x_0s[i, 0:2]
-        if is_test == False:
+        if not is_test:
             x_0s[i, 0] += ct.x_0[0]
             x_0s[i, 1] += ct.x_0[1]
             x_0s[i, 2] = ct.x_0[2]
@@ -74,12 +66,12 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test, is_plott
 
         for t in range(T - 1):
             u_t = u_traj[t] + K_traj[t] @ (x_traj_sim[idx, t] - x_traj[t])
-            if is_plotting == True:
+            if is_plotting:
                 x_traj_sim[idx, t + 1] = Integrator.RK4(dt, x_traj_sim[idx, t], u_t, W_traj[t])
             else:
                 x_traj_sim[idx, t + 1] = Integrator.RK4(dt, x_traj_sim[idx, t], u_t, np.zeros(ct.nw))
-    if is_plotting == True:
-        if is_multi == True:
+    if is_plotting:
+        if is_multi:
             plotting_fcn(x_traj_sim, u_traj, Q_traj, True)
         else:
             plotting_fcn(x_traj_sim, u_traj, Q_traj, False)
@@ -87,10 +79,10 @@ def traj_sim(x_traj, u_traj, W_traj, K_traj, Q_traj, is_multi, is_test, is_plott
     return x_traj_sim, u_traj_sim
 
 
-def plotting_fcn(x_traj, u_traj, Q_traj, is_multi):
+def plotting_fcn(x_traj, u_traj, Q_traj, is_multi):  # noqa: ARG001
     fig, ax = plt.subplots()
     ## plot traj boundles
-    if is_multi == True:
+    if is_multi:
         for i in range(N):
             ax.plot(x_traj[i + 1, :, 0], x_traj[i + 1, :, 1], "r")
     for t in range(T - 1):
