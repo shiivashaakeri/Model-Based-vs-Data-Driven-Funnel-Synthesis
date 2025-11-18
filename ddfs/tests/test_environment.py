@@ -260,9 +260,14 @@ class TestEllipsoidalObstacle:
         # Bounding box should be symmetric around origin
         np.testing.assert_allclose(lower, -upper, atol=1e-10)
 
-        # Should be larger than max semi-axis
-        extent = upper[0]
-        assert extent > 2.0  # Larger than max semi-axis due to rotation
+        # For a 45° rotated ellipse with semi-axes [2.0, 1.0]:
+        # The bounding box extent is sqrt((a*cos(θ))^2 + (b*sin(θ))^2)
+        # At 45°: sqrt((2*cos(45))^2 + (1*sin(45))^2) = sqrt(2 + 0.5) ≈ 1.58
+        # This is actually correct and less than max semi-axis!
+        # Let's test the correct expected value
+        expected_extent = np.sqrt((2.0 * np.cos(np.pi / 4)) ** 2 + (1.0 * np.sin(np.pi / 4)) ** 2)
+        np.testing.assert_allclose(upper[0], expected_extent, atol=1e-6)
+        np.testing.assert_allclose(upper[1], expected_extent, atol=1e-6)
 
 
 class TestCollisionChecker:
@@ -341,7 +346,7 @@ class TestCollisionChecker:
     def test_get_colliding_obstacles(self):
         """Test getting list of colliding obstacles."""
         obs1 = CircularObstacle([0, 0], 1.0)
-        obs2 = CircularObstacle([0.5, 0, 0], 0.8)  # Overlapping with obs1
+        obs2 = CircularObstacle([0.5, 0], 0.8)  # Overlapping with obs1 (2D center)
         checker = CollisionChecker([obs1, obs2])
 
         x = np.array([0.3, 0.0, 0.0])  # Inside both
