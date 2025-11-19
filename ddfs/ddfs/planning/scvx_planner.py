@@ -9,7 +9,7 @@ This module implements SCvx for nonlinear trajectory optimization with:
 
 Reference:
 - Mao et al. "Successive Convexification for 6-DoF Mars Rocket Powered Landing"
-- Acikmese & Ploen "Convex Programming Approach to Powered Descent Guidance"
+- Açikmeşe & Ploen "Convex Programming Approach to Powered Descent Guidance"
 """
 
 from typing import Dict, Optional, Tuple
@@ -49,18 +49,18 @@ class SCvxPlanner:
         Initialize SCvx planner.
 
         Args:
-            model: Dynamicsl system (unicycle)
+            model: Dynamical system (e.g., UnicycleModel)
             dt: Time step
             N: Number of time steps (horizon)
-            collision_checker: Collision checker
-            params: SCvx planner parameters
+            collision_checker: CollisionChecker for obstacles (optional)
+            params: SCvx parameters (optional)
         """
         self.model = model
         self.dt = dt
         self.N = N
         self.collision_checker = collision_checker
 
-        # State and Control dimensions
+        # State and input dimensions
         self.n = model.state_dim
         self.m = model.input_dim
 
@@ -68,17 +68,18 @@ class SCvxPlanner:
         default_params = {
             "max_iterations": 50,
             "tol_x": 1e-3,  # State convergence tolerance
-            "tol_u": 1e-3,  # Control convergence tolerance
+            "tol_u": 1e-3,  # Input convergence tolerance
             "trust_region_rho": 1.0,  # Initial trust region radius
-            "trust_region_rho_max": 10.0,  # Maximum trust region radius
-            "trust_region_rho_min": 1e-4,  # Minimum trust region radius
+            "trust_region_rho_max": 10.0,
+            "trust_region_rho_min": 1e-4,
             "trust_region_beta": 1.5,  # Trust region expansion factor
             "trust_region_gamma": 0.7,  # Trust region contraction factor
             "weight_trust_region": 1.0,  # Trust region penalty weight
-            "weight_control": 1.0,  # Control penalty weight
-            "weight_terminal": 100.0,  # Terminal penalty weight
+            "weight_control": 1.0,  # Control effort weight
+            "weight_terminal": 100.0,  # Terminal cost weight
             "verbose": True,
         }
+
         self.params = default_params
         if params is not None:
             self.params.update(params)
@@ -190,7 +191,7 @@ class SCvxPlanner:
 
     def _initialize_trajectory(self, x0: np.ndarray, xf: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Initialize trajectory with straight-line interpolation in state space.
+        Initialize trajectory with obstacle-aware path or straight-line interpolation.
 
         Args:
             x0: Initial state
@@ -200,14 +201,102 @@ class SCvxPlanner:
             x_init: Initial state trajectory (N+1, n)
             u_init: Initial input trajectory (N, m)
         """
-        # Straight-line interpolation
+        # Check if obstacle-aware initialization is requested
+        init_method = self.params.get("initialization_method", "straight_line")
+
+        if init_method == "obstacle_aware" and self.collision_checker is not None:
+            return self._initialize_obstacle_aware(x0, xf)
+        else:
+            return self._initialize_straight_line(x0, xf)
+
+    def _initialize_straight_line(self, x0: np.ndarray, xf: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Straight-line interpolation in state space."""
         x_init = np.zeros((self.N + 1, self.n))
         for i in range(self.n):
             x_init[:, i] = np.linspace(x0[i], xf[i], self.N + 1)
 
-        # Zero initial input
         u_init = np.zeros((self.N, self.m))
+        return x_init, u_init
 
+    def _initialize_obstacle_aware(self, x0: np.ndarray, xf: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Initialize with obstacle-aware path using simple waypoint strategy.
+
+        Creates a path that deviates around obstacles.
+        """
+        # Get obstacle centers and radii
+        obstacles = self.collision_checker.get_obstacles()
+
+        # Start with straight line
+        x_init = np.zeros((self.N + 1, self.n))
+        for i in range(self.n):
+            x_init[:, i] = np.linspace(x0[i], xf[i], self.N + 1)
+
+        # Check if straight line collides
+        collision, _, _ = self.collision_checker.check_trajectory_collision(x_init)
+
+        if not collision:
+            # Straight line is fine
+            u_init = np.zeros((self.N, self.m))
+            return x_init, u_init
+
+        # Create detour path
+        # Simple strategy: go around obstacles by creating intermediate waypoints
+        waypoints = [x0[:2]]  # Start position
+
+        # Find obstacles along path
+        direction = xf[:2] - x0[:2]
+        direction_norm = direction / np.linalg.norm(direction)
+        perpendicular = np.array([-direction_norm[1], direction_norm[0]])
+
+        # Add waypoints to avoid obstacles
+        for obs in obstacles:
+            if hasattr(obs, "get_center"):
+                center = obs.get_center()
+                radius = obs.get_effective_radius() if hasattr(obs, "get_effective_radius") else obs.get_radius()
+
+                # Check if obstacle is roughly on the path
+                to_obs = center - x0[:2]
+                proj = np.dot(to_obs, direction_norm)
+
+                if 0 < proj < np.linalg.norm(direction):
+                    # Obstacle is between start and goal
+                    # Add waypoint to detour around it
+                    detour_margin = self.params.get("detour_margin", 1.5)
+                    offset = perpendicular * radius * detour_margin
+                    waypoint = center + offset
+                    waypoints.append(waypoint)
+
+        waypoints.append(xf[:2])  # Goal position
+
+        # Interpolate through waypoints
+        if len(waypoints) > 2:
+            # Multiple waypoints - interpolate through them
+            points_per_segment = self.N // (len(waypoints) - 1)
+            x_init_new = []
+
+            for i in range(len(waypoints) - 1):
+                start = waypoints[i]
+                end = waypoints[i + 1]
+
+                for j in range(points_per_segment):
+                    alpha = j / points_per_segment
+                    point = (1 - alpha) * start + alpha * end
+                    x_init_new.append(point)
+
+            # Fill remaining points to goal
+            while len(x_init_new) < self.N + 1:
+                x_init_new.append(waypoints[-1])
+
+            x_init_new = np.array(x_init_new[: self.N + 1])
+
+            # Update x_init with new path
+            x_init[:, :2] = x_init_new
+
+            # Interpolate heading
+            x_init[:, 2] = np.linspace(x0[2], xf[2], self.N + 1)
+
+        u_init = np.zeros((self.N, self.m))
         return x_init, u_init
 
     def _solve_convex_subproblem(  # noqa: C901, PLR0912
@@ -241,7 +330,15 @@ class SCvxPlanner:
         x = cp.Variable((self.N + 1, self.n))
         u = cp.Variable((self.N, self.m))
 
-        # Objective: minimize control effort + trust region penalty
+        # Check if we should use slack variables for obstacles
+        use_slack = self.params.get("use_slack", True)
+        slack_penalty = self.params.get("slack_penalty", 1e5)
+
+        if use_slack and self.collision_checker is not None:
+            num_obs = self.collision_checker.num_obstacles()
+            slack = cp.Variable((self.N + 1, num_obs), nonneg=True)
+
+        # Objective: minimize control effort + trust region penalty + terminal cost
         cost = 0.0
 
         # Control effort
@@ -252,13 +349,17 @@ class SCvxPlanner:
         for k in range(self.N + 1):
             cost += self.params["weight_trust_region"] * cp.sum_squares(x[k, :] - x_ref[k, :])
 
-        # Terminal cost (encourage reaching goal)
+        # Terminal cost (SOFT - in objective, not constraint)
         cost += self.params["weight_terminal"] * cp.sum_squares(x[self.N, :] - xf)
+
+        # Slack penalty (if using slack)
+        if use_slack and self.collision_checker is not None:
+            cost += slack_penalty * cp.sum(slack)
 
         # Constraints
         constraints = []
 
-        # Initial condition
+        # Initial condition (HARD constraint)
         constraints.append(x[0, :] == x0)
 
         # Dynamics constraints (linearized)
@@ -287,7 +388,7 @@ class SCvxPlanner:
                 constraints.append(u[k, :] >= u_min)
                 constraints.append(u[k, :] <= u_max)
 
-        # Obstacle avoidance constraints (linearized)
+        # Obstacle avoidance constraints (linearized with optional slack)
         if self.collision_checker is not None:
             for k in range(self.N + 1):
                 # Get all obstacle gradients at reference point
@@ -298,18 +399,26 @@ class SCvxPlanner:
                     # Linearized constraint: d(x_ref) + ∇d^T (x - x_ref) ≥ 0
                     # Only consider position (first 2 states)
                     d_ref = distances[obs_idx]
-                    constraints.append(d_ref + grad @ (x[k, :2] - x_ref[k, :2]) >= 0)
 
-        # Trust region (as soft constraint via penalty in objective)
-        # Alternatively, can add hard constraint:
-        # for k in range(self.N + 1):
-        #     constraints.append(cp.norm(x[k, :] - x_ref[k, :], 2) <= rho)
+                    if use_slack:
+                        # Soft constraint with slack: d(x_ref) + ∇d^T (x - x_ref) + slack >= 0
+                        constraints.append(d_ref + grad @ (x[k, :2] - x_ref[k, :2]) + slack[k, obs_idx] >= 0)
+                    else:
+                        # Hard constraint
+                        constraints.append(d_ref + grad @ (x[k, :2] - x_ref[k, :2]) >= 0)
 
         # Solve problem
         problem = cp.Problem(cp.Minimize(cost), constraints)
 
         try:
-            problem.solve(solver=cp.ECOS, verbose=False)
+            problem.solve(
+                solver=cp.ECOS,
+                verbose=False,
+                max_iters=self.params.get("max_solver_iters", 1000),
+                abstol=self.params.get("solver_abstol", 1e-6),
+                reltol=self.params.get("solver_reltol", 1e-5),
+                feastol=self.params.get("solver_feastol", 1e-6),
+            )
 
             if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
                 return x.value, u.value, problem.value

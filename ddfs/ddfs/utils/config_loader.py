@@ -61,10 +61,61 @@ class ConfigLoader:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
+        # Post-process: evaluate numpy constants like np.pi
+        config = self._evaluate_numpy_constants(config)
+
         # Store in cache
         self.configs[config_name] = config
 
         return config
+
+    def _evaluate_numpy_constants(self, obj: Any) -> Any:  # noqa: PLR0911, C901
+        """
+        Recursively evaluate numpy constants in config (e.g., 'np.pi' -> 3.14159...).
+        Also converts numeric strings to numbers.
+
+        Args:
+            obj: Config object (dict, list, or value)
+
+        Returns:
+            Processed object with numpy constants evaluated
+        """
+        if isinstance(obj, dict):
+            return {key: self._evaluate_numpy_constants(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._evaluate_numpy_constants(item) for item in obj]
+        elif isinstance(obj, str):
+            # Check if string represents a numpy constant
+            if obj == "np.pi":
+                return np.pi
+            elif obj == "-np.pi":
+                return -np.pi
+            elif obj.startswith("np.") or obj.startswith("-np."):
+                # Try to evaluate other numpy constants
+                try:
+                    # Remove leading minus if present
+                    is_negative = obj.startswith("-")
+                    constant_name = obj.lstrip("-")
+                    if hasattr(np, constant_name.split(".")[1]):
+                        value = getattr(np, constant_name.split(".")[1])
+                        return -value if is_negative else value
+                except (AttributeError, IndexError):
+                    pass
+            # Try to convert numeric strings to numbers
+            try:
+                # Try float first (handles scientific notation like "1e-3")
+                if "e" in obj.lower() or "E" in obj:
+                    return float(obj)
+                # Try int for simple integers
+                if obj.isdigit() or (obj.startswith("-") and obj[1:].isdigit()):
+                    return int(obj)
+                # Try float for decimal numbers
+                return float(obj)
+            except (ValueError, AttributeError):
+                # Not a number, return as string
+                return obj
+        else:
+            return obj
 
     def load_all(self, config_names: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
         """
@@ -160,7 +211,7 @@ class ConfigLoader:
 
         return merged
 
-    def validate_scvx_config(self, config: Optional[Dict] = None) -> bool:  # noqa: C901, PLR0912
+    def validate_scvx_config(self, config: Optional[Dict] = None) -> bool:  # noqa: C901, PLR0912, PLR0915
         """
         Validate SCvx configuration parameters.
 
@@ -184,12 +235,18 @@ class ConfigLoader:
                 raise ValueError(f"Missing required field: {field}")
 
         # Validate dt
-        if config["dt"] <= 0:
-            raise ValueError(f"dt must be positive, got {config['dt']}")
+        dt = config["dt"]
+        if not isinstance(dt, (int, float)):
+            raise ValueError(f"dt must be numeric, got {type(dt).__name__}: {dt}")
+        if dt <= 0:
+            raise ValueError(f"dt must be positive, got {dt}")
 
         # Validate N
-        if config["N"] <= 0:
-            raise ValueError(f"N must be positive, got {config['N']}")
+        N = config["N"]
+        if not isinstance(N, (int, float)):
+            raise ValueError(f"N must be numeric, got {type(N).__name__}: {N}")
+        if N <= 0:
+            raise ValueError(f"N must be positive, got {N}")
 
         # Validate state dimensions
         if len(config["initial_state"]) != 3:
@@ -202,11 +259,19 @@ class ConfigLoader:
         x_min = config["state_bounds"]["x_min"]
         x_max = config["state_bounds"]["x_max"]
 
+        # Convert to numpy arrays and ensure numeric
+        x_min = np.array(x_min, dtype=float)
+        x_max = np.array(x_max, dtype=float)
+
         if not all(x_min[i] < x_max[i] for i in range(len(x_min))):
             raise ValueError("state_bounds: x_min must be < x_max")
 
         u_min = config["input_bounds"]["u_min"]
         u_max = config["input_bounds"]["u_max"]
+
+        # Convert to numpy arrays and ensure numeric
+        u_min = np.array(u_min, dtype=float)
+        u_max = np.array(u_max, dtype=float)
 
         if not all(u_min[i] < u_max[i] for i in range(len(u_min))):
             raise ValueError("input_bounds: u_min must be < u_max")
@@ -214,10 +279,19 @@ class ConfigLoader:
         # Validate algorithm parameters
         algo = config["algorithm"]
 
-        if algo["max_iterations"] <= 0:
+        max_iter = algo["max_iterations"]
+        if not isinstance(max_iter, (int, float)):
+            raise ValueError(f"max_iterations must be numeric, got {type(max_iter).__name__}: {max_iter}")
+        if max_iter <= 0:
             raise ValueError("max_iterations must be positive")
 
-        if algo["tol_x"] <= 0 or algo["tol_u"] <= 0:
+        tol_x = algo["tol_x"]
+        tol_u = algo["tol_u"]
+        if not isinstance(tol_x, (int, float)) or not isinstance(tol_u, (int, float)):
+            raise ValueError(
+                f"Tolerances must be numeric, got tol_x={type(tol_x).__name__}, tol_u={type(tol_u).__name__}"
+            )
+        if tol_x <= 0 or tol_u <= 0:
             raise ValueError("Tolerances must be positive")
 
         tr = algo["trust_region"]
