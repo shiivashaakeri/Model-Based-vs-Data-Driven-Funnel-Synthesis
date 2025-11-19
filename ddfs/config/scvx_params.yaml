@@ -4,7 +4,7 @@
 
 # Time discretization
 dt: 0.1               # Time step (seconds)
-N: 60                 # Horizon length (number of timesteps)
+N: 120                 # Horizon length (number of timesteps)
                       # Total time = dt * N = 6.0 seconds
 
 # Initial and goal states

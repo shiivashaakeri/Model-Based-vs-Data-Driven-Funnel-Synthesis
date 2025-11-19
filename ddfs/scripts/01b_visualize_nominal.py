@@ -139,9 +139,45 @@ def plot_workspace_trajectory(ax, data, obstacles, collision_checker):
         show_start_goal=False,
     )
 
-    # Mark start and goal
+    # Mark start
     ax.plot(x0[0], x0[1], "go", markersize=15, label="Start", zorder=10, markeredgecolor="darkgreen", markeredgewidth=2)
-    ax.plot(xf[0], xf[1], "r*", markersize=20, label="Goal", zorder=10, markeredgecolor="darkred", markeredgewidth=1.5)
+
+    # Mark desired goal
+    ax.plot(
+        xf[0],
+        xf[1],
+        "r*",
+        markersize=20,
+        label="Desired Goal",
+        zorder=10,
+        markeredgecolor="darkred",
+        markeredgewidth=1.5,
+    )
+
+    # Mark actual final position
+    x_final = x_traj[-1, :2]
+    ax.plot(
+        x_final[0],
+        x_final[1],
+        "bs",
+        markersize=10,
+        label="Final Position",
+        zorder=10,
+        markeredgecolor="darkblue",
+        markeredgewidth=2,
+    )
+
+    # Draw line between final position and desired goal if they're different
+    goal_error = np.linalg.norm(x_final - xf[:2])
+    if goal_error > 0.01:  # Only show if error > 1cm
+        ax.plot(
+            [x_final[0], xf[0]],
+            [x_final[1], xf[1]],
+            "r--",
+            linewidth=2,
+            alpha=0.7,
+            label=f"Goal Error: {goal_error:.3f}m",
+        )
 
     # Check for collisions and mark them
     collision, timestep, obs_idx = collision_checker.check_trajectory_collision(x_traj)
@@ -157,7 +193,7 @@ def plot_workspace_trajectory(ax, data, obstacles, collision_checker):
             zorder=11,
         )
 
-    ax.legend(loc="upper left", fontsize=10)
+    ax.legend(loc="upper left", fontsize=9)
     ax.set_aspect("equal", adjustable="box")
 
 
@@ -422,12 +458,12 @@ def print_summary(data):
     u_traj = data["u_traj"]
     metadata = data.get("metadata", {})
 
-    print("\n Planning:")
+    print("\nPlanning:")
     print(f"   Initial state:   {data['x0']}")
     print(f"   Goal state:      {data['xf']}")
     print(f"   Horizon:         {data['N']} steps ({data['N'] * data['dt']:.1f}s)")
 
-    print("\n Convergence:")
+    print("\nConvergence:")
     converged = metadata.get("converged", False)
     iterations = metadata.get("iterations", 0)
     print(f"   Status:          {'Converged' if converged else 'Max iterations'}")
@@ -435,8 +471,8 @@ def print_summary(data):
 
     if "validation" in metadata:
         val = metadata["validation"]
-        print("\n Validation:")
-        print(f"   Collision-free:  {'Collision-free' if not val['collision']['detected'] else 'Collision detected'}")
+        print("\nValidation:")
+        print(f"   Collision-free:  {'✓' if not val['collision']['detected'] else '✗'}")
         print(f"   Min clearance:   {val['clearance']['minimum']:.4f} m")
         print(f"   Goal error:      {val['goal_error']:.6f} m")
         print(f"   Max lin error:   {val['linearization']['max_error']:.6f}")
@@ -445,7 +481,7 @@ def print_summary(data):
     distances = np.linalg.norm(np.diff(x_traj[:, :2], axis=0), axis=1)
     total_distance = np.sum(distances)
 
-    print("\n Trajectory:")
+    print("\nTrajectory:")
     print(f"   Distance:        {total_distance:.3f} m")
     print(f"   Avg velocity:    {np.mean(u_traj[:, 0]):.3f} m/s")
     print(f"   Max velocity:    {np.max(u_traj[:, 0]):.3f} m/s")
@@ -466,26 +502,28 @@ def save_plots(fig1, fig2, folder_path):
     # Save main figure
     main_plot_path = folder_path / "trajectory_visualization.png"
     fig1.savefig(main_plot_path, dpi=150, bbox_inches="tight")
-    print(f"    Saved: {main_plot_path.name}")
+    print(f"  Saved: {main_plot_path.name}")
 
     # Save convergence figure
     convergence_plot_path = folder_path / "convergence_analysis.png"
     fig2.savefig(convergence_plot_path, dpi=150, bbox_inches="tight")
-    print(f"    Saved: {convergence_plot_path.name}")
+    print(f"  Saved: {convergence_plot_path.name}")
 
     # Also save as PDF for high quality
     main_plot_pdf = folder_path / "trajectory_visualization.pdf"
     fig1.savefig(main_plot_pdf, bbox_inches="tight")
-    print(f"    Saved: {main_plot_pdf.name}")
+    print(f"  Saved: {main_plot_pdf.name}")
 
     convergence_plot_pdf = folder_path / "convergence_analysis.pdf"
     fig2.savefig(convergence_plot_pdf, bbox_inches="tight")
-    print(f"    Saved: {convergence_plot_pdf.name}")
+    print(f"  Saved: {convergence_plot_pdf.name}")
 
 
 def main():
     """Main execution function."""
+    print("\n" + "=" * 35)
     print("NOMINAL TRAJECTORY VISUALIZATION")
+    print("=" * 35 + "\n")
 
     # Load trajectory
     filepath = sys.argv[1] if len(sys.argv) > 1 else None
@@ -493,43 +531,44 @@ def main():
     try:
         data, folder_path = load_trajectory(filepath)
     except Exception as e:
-        print(f"❌ Error loading trajectory: {e}")
+        print(f"Error loading trajectory: {e}")
         return 1
 
     # Print summary
     print_summary(data)
 
     # Create visualizations
-    print("🎨 Creating visualizations...")
+    print(" Creating visualizations...")
 
     try:
         fig1, fig2 = create_visualization(data)
-        print("✓ Visualizations created")
+        print("Visualizations created")
     except Exception as e:
-        print(f"❌ Error creating visualizations: {e}")
+        print(f" Error creating visualizations: {e}")
         import traceback  # noqa: PLC0415
 
         traceback.print_exc()
         return 1
 
     # Save plots
-    print(f"\n💾 Saving plots to: {folder_path}/")
+    print(f"\n Saving plots to: {folder_path}/")
     try:
         save_plots(fig1, fig2, folder_path)
-        print("✓ All plots saved")
+        print(" All plots saved")
     except Exception as e:
-        print(f"❌ Error saving plots: {e}")
+        print(f"Error saving plots: {e}")
         import traceback  # noqa: PLC0415
 
         traceback.print_exc()
         return 1
 
+    print("\n" + "=" * 35)
     print("VISUALIZATION COMPLETE")
+    print("=" * 35 + "\n")
 
-
-    print(f"📁 All files saved in: {folder_path}/")
-    print("   • Trajectory data (.pkl)")
-    print("   • Visualization plots (.png, .pdf)")
+    print(f" All files saved in: {folder_path}/")
+    print("  Trajectory data (.pkl)")
+    print("  Visualization plots (.png, .pdf)")
 
     return 0
 
