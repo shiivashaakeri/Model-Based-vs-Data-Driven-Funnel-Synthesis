@@ -90,6 +90,21 @@ class BoxConstraints:
         """Get lower and upper bounds."""
         return self.lower.copy(), self.upper.copy()
 
+    def compute_violation(self, x: np.ndarray) -> float:
+        """
+        Compute constraint violation.
+
+        Args:
+            x: Point to check (n,)
+
+        Returns:
+            violation: Maximum violation (0 if satisfied)
+        """
+        lower_violation = np.maximum(0, self.lower - x)
+        upper_violation = np.maximum(0, x - self.upper)
+        max_violation = np.maximum(np.max(lower_violation), np.max(upper_violation))
+        return float(max_violation)
+
     def tighten(self, margin: np.ndarray) -> "BoxConstraints":
         """
         Tighten constraints by margin.

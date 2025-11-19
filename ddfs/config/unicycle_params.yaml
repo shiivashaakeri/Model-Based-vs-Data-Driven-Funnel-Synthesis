@@ -1,1 +1,57 @@
-# unicycle parameters
+# Unicycle Model Parameters
+#
+# Configuration for the kinematic unicycle model used as the digital twin.
+# The unicycle is a simple mobile robot model with position and heading.
+
+# Model dimensions
+state_dim: 3      # px, py, theta
+input_dim: 2      # v, omega
+
+# State description
+states:
+  px:
+    name: "Position X"
+    units: "m"
+    description: "X-coordinate in workspace"
+  py:
+    name: "Position Y"
+    units: "m"
+    description: "Y-coordinate in workspace"
+  theta:
+    name: "Heading"
+    units: "rad"
+    description: "Heading angle (counter-clockwise from x-axis)"
+
+# Input description
+inputs:
+  v:
+    name: "Linear velocity"
+    units: "m/s"
+    description: "Forward velocity"
+  omega:
+    name: "Angular velocity"
+    units: "rad/s"
+    description: "Turning rate"
+
+# Initial and goal states (can be overridden in experiment configs)
+default_initial_state: [0.5, 0.5, 0.0]    # [px, py, theta]
+default_goal_state: [7.0, 7.0, 0.0]       # [px, py, theta]
+
+# Physical constraints (optional, for reference)
+# These are nominal values; actual bounds are in experiment configs
+nominal_constraints:
+  max_linear_velocity: 1.0     # m/s
+  max_angular_velocity: 1.0    # rad/s
+  min_linear_velocity: 0.0     # m/s (forward only)
+
+# Discretization
+integration_method: "rk4"      # Options: "euler" or "rk4"
+default_dt: 0.1                # seconds
+
+# Notes
+notes: |
+  This is a kinematic unicycle model with no mass or inertia.
+  Dynamics: xdot = [v*cos(theta), v*sin(theta), omega]
+  
+  For the digital twin, these parameters are exact.
+  The physical plant will have parameter mismatches defined separately.

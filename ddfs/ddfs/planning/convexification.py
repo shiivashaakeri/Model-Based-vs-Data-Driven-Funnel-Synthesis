@@ -136,7 +136,7 @@ class DynamicsLinearizer:
         """
         errors = self.compute_linearization_error(x_traj, u_traj)
         max_error = np.max(errors)
-        valid = max_error < tolerance
+        valid = bool(max_error < tolerance)
         return valid, max_error
 
 
@@ -176,6 +176,7 @@ class TrustRegionManager:
         self.beta_expand = beta_expand
         self.gamma_contract = gamma_contract
 
+        self.rho = rho_init
         self.history = []
 
     def get_radius(self) -> float:
@@ -186,11 +187,13 @@ class TrustRegionManager:
         """Expand trust region radius (solution accepted)."""
         self.rho = min(self.rho * self.beta_expand, self.rho_max)
         self.history.append(("expand", self.rho))
+        return self.rho
 
     def contract(self) -> float:
         """Contract trust region radius (solution rejected or infeasible)."""
         self.rho = max(self.rho * self.gamma_contract, self.rho_min)
         self.history.append(("contract", self.rho))
+        return self.rho
 
     def is_too_small(self) -> bool:
         """Check if trust region is too small to continue."""
@@ -204,7 +207,7 @@ class TrustRegionManager:
             rho_new: New trust region radius (use initial if None)
         """
         if rho_new is None:
-            self.rho = 1.0
+            self.rho = self.rho_init
         else:
             self.rho = np.clip(rho_new, self.rho_min, self.rho_max)
         self.history.append(("reset", self.rho))

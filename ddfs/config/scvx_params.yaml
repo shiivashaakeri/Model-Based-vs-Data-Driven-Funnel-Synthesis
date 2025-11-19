@@ -1,0 +1,112 @@
+# Successive Convexification (SCvx) Planner Configuration
+#
+# Parameters for trajectory optimization with obstacle avoidance
+
+# Time discretization
+dt: 0.1                          # Time step (seconds)
+N: 60                            # Horizon length (number of time steps)
+                                # Total time = dt * N = 6 seconds
+
+# Initial and goal states
+initial_state: [0.5, 0.5, 0.0]    # [px, py, theta] - Start position
+goal_state: [7.0, 7.0, 0.0]       # [px, py, theta] - Goal position
+
+# State constraints (box constraints)
+state_bounds:
+  x_min: [0.0, 0.0, -np.pi]        # [px_min, py_min, theta_min]
+  x_max: [8.0, 8.0, np.pi]         # [px_max, py_max, theta_max]
+
+# Input constraints (box constraints)
+input_bounds:
+  u_min: [0.0, -1.0]              # [v_min, omega_min]
+  u_max: [1.0, 1.0]               # [v_max, omega_max]
+
+# SCvx algorithm parameters
+algorithm:
+  max_iterations: 30              # Maximum number of iterations
+
+  # Convergence tolerances
+  tol_x: 1e-3                      # State convergence tolerance
+  tol_u: 1e-3                      # Control convergence tolerance
+  
+  # Trust region parameters
+  trust_region:
+    rho_init: 1.0                  # Initial trust region radius
+    rho_min: 1e-4                  # Minimum trust region radius
+    rho_max: 10.0                  # Maximum trust region radius
+    beta_expand: 1.5               # Trust region expansion factor (on success)
+    gamma_contract: 0.7            # Trust region contraction factor (on failure)
+  
+  # Cost function weights
+  weights:
+    control: 1.0                   # Control penalty weight (||u||²)
+    trust_region: 10.0             # Trust region penalty weight (||x - x_ref||²)
+    terminal: 100.0                # Terminal penalty weight (||x_final - x_goal||²)
+  
+  # Verbosity
+  verbose: true                    # Print progress and results
+
+# Solver settings
+solver:
+  name: "ECOS"                     # Solver name
+  verbose: false                   # Print solver progress
+  max_iter: 500                    # Maximum number of solver iterations
+  abstol: 1e-7                     # Absolute tolerance
+  reltol: 1e-6                     # Relative tolerance
+  feastol: 1e-7                    # Feasibility tolerance
+
+# Initialization strategy
+initialization:
+  method: "straight_line"          # Options: "straight_line" or "custom"
+  # If method == "custom", provide custom_trajectory_file
+  # custom_trajectory_file: "path/to/initial_guess.pkl"
+
+# Validation thresholds
+validation:
+  max_linearization_error: 1e-2     # Maximum acceptable linearization error
+  min_obstacle_clearance: 0.1       # Minimum acceptable obstacle clearance (meters)
+  max_goal_error: 0.1               # Maximum acceptable goal error (meters)
+
+# Output settings
+output:
+  save_trajectory: true
+  save_history: true
+  save_format: "pickle"            # Options: "pickle" or "json" or "numpy"
+  output_dir: "data/nominal_trajectories"
+  filename_prefix: "unicycle_nominal"
+
+# Visualization settings (for debugging during planning)
+debug_visualization:
+  enabled: false                  # Enable visualization during planning
+  plot_every_n_iterations: 5      # Plot every n iterations
+  show_trust_region: true
+  show_linearization: true
+
+# Performance settings
+performance:
+  parallel: false                 # Parallel linearization (future feature)
+  cache_linearizations: false     # Cache linearizations (future feature)
+
+# Experiment metadata
+experiment:
+  name: "unicycle_obstacle_avoidance"
+  description: |
+    SCvx trajectory planning for unicycle with 2 circular obstacles.
+    Goal: Navigate from bottom-left to top-right while avoiding obstacles.
+  tags: ["unicycle", "scvx", "obstacle_avoidance"]
+
+# Notes
+notes: |
+  This configuration is for the initial nominal trajectory generation.
+  
+  Key parameters to tune for performance:
+  - dt: Smaller = more accurate but slower
+  - N: Longer horizon allows more time to avoid obstacles
+  - weights: Balance between control effort and tracking
+  - trust_region: Affects convergence speed and robustness
+  
+  If planning fails:
+  1. Increase N (longer horizon)
+  2. Increase trust_region.rho_init (more flexibility)
+  3. Decrease weights.terminal (relax goal constraint)
+  4. Check obstacles are not blocking the straight-line path completely
