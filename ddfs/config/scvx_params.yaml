@@ -41,7 +41,7 @@ algorithm:
   weights:
     control: 1.0                  # Control effort: ||u||^2
     trust_region: 1.0             # Trust region penalty: ||x - x_ref||^2 (reduced from 10.0)
-    terminal: 50.0                # Terminal cost: ||x(N) - x_goal||^2 (reduced from 100.0)
+    terminal: 100.0               # Terminal cost: ||x(N) - x_goal||^2 (balanced for feasibility and goal reaching)
   
   # Verbosity
   verbose: true                   # Print iteration progress
@@ -65,13 +65,14 @@ initialization:
 # Obstacle handling
 obstacles:
   use_slack: true                 # Use slack variables for soft constraints
-  slack_penalty: 1e5              # Penalty weight for slack variables (high to discourage violations)
+  slack_penalty: 5e5              # Penalty weight for slack variables (balanced for feasibility and clearance)
+  # min_clearance removed - using safety_margin in environment.yaml instead
 
 # Validation thresholds
 validation:
   max_linearization_error: 0.01  # Maximum acceptable linearization error
-  min_obstacle_clearance: 0.05   # Minimum acceptable clearance to obstacles
-  max_goal_error: 0.2            # Maximum acceptable final goal error (relaxed from 0.1)
+  min_obstacle_clearance: 0.1    # Minimum acceptable clearance to obstacles (balanced for feasibility)
+  max_goal_error: 0.2            # Maximum acceptable final goal error
 
 # Output settings
 output:

@@ -19,13 +19,13 @@ obstacles:
     type: "circle"
     center: [3.0, 3.0]
     radius: 0.8
-    safety_margin: 0.2
+    safety_margin: 0.25            # Increased from 0.2 to enforce better clearance (reduced from 0.3 for feasibility)
     description: "First obstacle in middle-left region"
   - id: "obs_2"
     type: "circle"
     center: [5.5, 4.5]
     radius: 0.6
-    safety_margin: 0.2
+    safety_margin: 0.25            # Increased from 0.2 to enforce better clearance (reduced from 0.3 for feasibility)
     description: "Second obstacle in middle-right region"
   
 # Alternatively obstacle configurations (for testing)
@@ -69,7 +69,7 @@ alternative_configs:
 
 # Safety parameters
 safety:
-  minimum_clearance: 0.1   # Minimum acceptable distance to obstacles (m)
+  minimum_clearance: 0.1   # Minimum acceptable distance to obstacles (m) - balanced for feasibility
   clearance_warning: 0.3   # Warn if clearance falls below this (m)
 
 # Visualization settings
