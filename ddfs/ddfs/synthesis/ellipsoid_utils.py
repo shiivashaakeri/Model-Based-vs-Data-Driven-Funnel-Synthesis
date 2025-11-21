@@ -272,8 +272,8 @@ class EllipsoidUtility:
         """
         n = self.n_states
 
-        # inearize all constraints at x_nom
-        A_x, b_x = self.linearize_all_state_constraints(x_nom, state_constraints, obstacles)
+        # Linearize all constraints at x_nom
+        A_x, b_x = self._linearize_all_state_constraints(x_nom, state_constraints, obstacles)
 
         if A_x.shape[0] == 0:
             P_min = np.eye(n) / (self.x_max**2)
@@ -294,7 +294,7 @@ class EllipsoidUtility:
             P_min = np.eye(n) / (self.x_max**2)
             return P_min, True
 
-        constraints.append(cp.trace(Z) <= self.x_max * np.eye(n))
+        constraints.append(self.x_max * np.eye(n) >= Z)
         objective = cp.Maximize(cp.log_det(Z))
 
         problem = cp.Problem(objective, constraints)
@@ -311,7 +311,7 @@ class EllipsoidUtility:
             Z_inv = np.linalg.inv(Z_opt)
             P_min = Z_inv.T @ Z_inv
 
-            P_min = P_min / (P_min + P_min.T)
+            P_min = 0.5 * (P_min + P_min.T)
             eig_vals = np.linalg.eigvals(P_min)
             if np.min(eig_vals) <= 0:
                 P_min += (abs(np.min(eig_vals)) + 1e-6) * np.eye(n)
@@ -345,7 +345,7 @@ class EllipsoidUtility:
         """
         m = self.n_controls
 
-        A_u, b_u = self.linearize_all_input_constraints(u_nom, input_constraints)
+        A_u, b_u = self._linearize_input_constraints(u_nom, input_constraints)
 
         if A_u.shape[0] == 0:
             R_max = np.eye(m) * (self.u_max**2)
@@ -367,7 +367,7 @@ class EllipsoidUtility:
             R_max = np.eye(m) * (self.u_max**2)
             return R_max, True
 
-        constraints.append(cp.trace(W) <= self.u_max * np.eye(m))
+        constraints.append(self.u_max * np.eye(m) >= W)
 
         objective = cp.Maximize(cp.log_det(W))
         problem = cp.Problem(objective, constraints)
@@ -382,7 +382,7 @@ class EllipsoidUtility:
 
             W_opt = W.value
             R_max = W_opt.T @ W_opt
-            R_max = R_max / (R_max + R_max.T)
+            R_max = 0.5 * (R_max + R_max.T)
             return R_max, True
         except Exception as e:
             warnings.warn(f"R_max optimization failed with error: {e}")
@@ -415,8 +415,8 @@ class EllipsoidUtility:
             P_min_k: List of P_min(k) ellipsoids for each timestep
             R_max_k: List of R_max(k) ellipsoids for each timestep
         """
-        X = trajectory["X"]
-        U = trajectory["U"]
+        X = trajectory["x_traj"]
+        U = trajectory["u_traj"]
         N = X.shape[0]
 
         P_min_k = []
@@ -436,7 +436,9 @@ class EllipsoidUtility:
                 n_failed_P += 1
 
             # Compute R_max(k)
-            R_max, success_R = self.compute_R_max(U[k], input_constraints, verbose=False)
+            # Handle case where U is shorter than X (last timestep has no input)
+            u_k = U[min(k, len(U) - 1)] if len(U) > 0 else np.zeros(self.n_controls)
+            R_max, success_R = self.compute_R_max(u_k, input_constraints, verbose=False)
             R_max_k.append(R_max)
             if not success_R:
                 n_failed_R += 1
@@ -458,13 +460,34 @@ class EllipsoidUtility:
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Compute per-segment envelopes P_min,i and R_max,i.
+
+        segments can be either:
+        - List of segment dicts with "time_indices" key
+        - List of lists (segmented_data) where each inner list contains segment dicts with "k_start" and "k_end"
         """
-        n_segments = len(segments)
+        # Handle segmented_data structure (list of lists)
+        if len(segments) > 0 and isinstance(segments[0], list):
+            # Extract segment boundaries from first trajectory's segments
+            first_traj_segments = segments[0]
+            n_segments = len(first_traj_segments)
+        else:
+            n_segments = len(segments)
+
         P_min_i = []
         R_max_i = []
 
-        for i, segment in enumerate(segments):
-            time_indices = segment["time_indices"]
+        for i in range(n_segments):
+            # Extract time indices based on structure
+            if len(segments) > 0 and isinstance(segments[0], list):
+                # segmented_data structure: get from first trajectory
+                segment = segments[0][i]
+                k_start = segment["k_start"]
+                k_end = segment["k_end"]
+                time_indices = list(range(k_start, k_end + 1))
+            else:
+                # Direct segment dict structure
+                segment = segments[i]
+                time_indices = segment["time_indices"]
 
             # P_min,i = element-wise maximum
             P_segment = [P_min_k[k] for k in time_indices]
@@ -520,11 +543,19 @@ class EllipsoidUtility:
         P_min_i, R_max_i = self.compute_segment_envelopes(P_min_k, R_max_k, segments, verbose=True)
 
         # Extract segment time indices
-        segment_times = [seg["time_indices"] for seg in segments]
+        if len(segments) > 0 and isinstance(segments[0], list):
+            # segmented_data structure: get from first trajectory
+            segment_times = [list(range(seg["k_start"], seg["k_end"] + 1)) for seg in segments[0]]
+        else:
+            # Direct segment dict structure
+            segment_times = [seg["time_indices"] for seg in segments]
+
+        # Get actual number of segments
+        n_segments = len(segments[0]) if len(segments) > 0 and isinstance(segments[0], list) else len(segments)
 
         metadata = {
             "n_timesteps": len(P_min_k),
-            "n_segments": len(segments),
+            "n_segments": n_segments,
             "n_obstacles": len(obstacles) if obstacles else 0,
             "state_constraints": state_constraints,
             "input_constraints": input_constraints,
@@ -573,7 +604,7 @@ class EllipsoidUtility:
         if ax is None:
             fig, ax = plt.subplots(figsize=(12, 10))
 
-        X = trajectory["X"]
+        X = trajectory["x_traj"]
         N = X.shape[0]
 
         # Plot nominal trajectory
