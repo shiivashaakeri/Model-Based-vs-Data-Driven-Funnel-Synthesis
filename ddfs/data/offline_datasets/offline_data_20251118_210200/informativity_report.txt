@@ -1,0 +1,12 @@
+======================================================================
+INFORMATIVITY REPORT
+======================================================================
+Total segments: 6
+Passed:         6
+Failed:         0
+
+✓ ALL SEGMENTS ARE INFORMATIVE
+
+The collected data satisfies persistence of excitation.
+Data-driven funnel synthesis can proceed.
+======================================================================

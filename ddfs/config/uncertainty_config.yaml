@@ -1,0 +1,26 @@
+# Phase 5: Uncertainty Quantification Configuration
+
+# Finite difference parameters
+epsilon_fd: 1.0e-6  # Step size for finite difference Jacobian computation
+
+# Sampling parameters for L_J computation
+n_samples_L_J: 10000  # Number of sample pairs for Jacobian Lipschitz constant
+
+# Sampling box for L_J computation (state and control bounds)
+sampling_box:
+  x_min: [-10.0, -10.0, -6.283185307179586]  # [x, y, θ] min
+  x_max: [10.0, 10.0, 6.283185307179586]     # [x, y, θ] max
+  u_min: [-2.0, -2.0]                         # [v, ω] min  
+  u_max: [2.0, 2.0]                           # [v, ω] max
+
+# Velocity bound for increment bound C
+v_max: 1.0  # Maximum velocity (m/s)
+
+# Per-segment uncertainty computation
+beta_computation:
+  method: "frobenius_ratio"  # Method: "frobenius_ratio" or "svd_based"
+  default_beta: 0.1          # Default β_i if computation fails
+
+# Output settings
+save_detailed_results: true  # Save per-timestep and per-sample results
+output_format: "pickle"      # Format: "pickle" or "yaml"
