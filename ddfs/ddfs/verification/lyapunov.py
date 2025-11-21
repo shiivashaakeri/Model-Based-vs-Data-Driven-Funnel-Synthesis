@@ -1,1 +1,0 @@
-# Lyapunov function evaluation

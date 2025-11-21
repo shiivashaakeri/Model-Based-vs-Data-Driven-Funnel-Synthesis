@@ -1,9 +1,0 @@
-synthesis:
-  alpha: 0.97
-  nu_lower_bound: 1.0e-6
-  mu: 1.2
-  solver: 'SCS'
-  enable_coupling: false
-  max_iters: 10000
-  eps: 1.0e-6
-  verbose: true
