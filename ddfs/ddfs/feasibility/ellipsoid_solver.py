@@ -12,9 +12,10 @@ from typing import List, Optional
 
 import cvxpy as cp
 import numpy as np
-from core.config import DDFSConfig
-from core.obstacles import Obstacle
 from numpy.typing import NDArray
+
+from ddfs.core.config import DDFSConfig
+from ddfs.core.obstacles import Obstacle
 
 logger = logging.getLogger(__name__)
 

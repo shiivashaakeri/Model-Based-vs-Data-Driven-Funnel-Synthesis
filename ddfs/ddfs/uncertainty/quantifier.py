@@ -9,9 +9,10 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
-from core.config import DDFSConfig
-from models.base import VehicleModel
 from numpy.typing import NDArray
+
+from ddfs.core.config import DDFSConfig
+from ddfs.models.base import DynamicsModel
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,8 @@ class UncertaintyQuantifier:
     def __init__(
         self,
         config: DDFSConfig,
-        plant: VehicleModel,
-        twin: VehicleModel,
+        plant: DynamicsModel,
+        twin: DynamicsModel,
     ):
         """Initialize the uncertainty quantifier.
 

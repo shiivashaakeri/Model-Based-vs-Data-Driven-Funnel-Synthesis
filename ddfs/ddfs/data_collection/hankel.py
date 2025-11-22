@@ -14,7 +14,7 @@ Key components:
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 
@@ -188,7 +188,7 @@ class SegmentHankelMatrices:
         """
         return np.vstack([self.H, self.Xi])
 
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """Save matrices to file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ class SegmentHankelMatrices:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(path: Path | str) -> "SegmentHankelMatrices":
+    def load(path: Union[Path, str]) -> "SegmentHankelMatrices":
         """Load matrices from file."""
         with open(path, "rb") as f:
             return pickle.load(f)

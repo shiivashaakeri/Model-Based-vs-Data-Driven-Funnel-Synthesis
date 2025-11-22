@@ -13,7 +13,7 @@ that goes from initial state x0 to goal state xf while avoiding obstacles.
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 
@@ -146,7 +146,7 @@ class NominalTrajectory:
         """
         return np.linspace(0, self.tf, self.N + 1)
 
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """
         Save nominal trajectory to pickle file.
 
@@ -166,7 +166,7 @@ class NominalTrajectory:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(path: Path | str) -> "NominalTrajectory":
+    def load(path: Union[Path, str]) -> "NominalTrajectory":
         """
         Load nominal trajectory from pickle file.
 

@@ -33,7 +33,7 @@ Usage
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -82,7 +82,7 @@ class DDFSConfig:
     >>> obstacles = config.get_obstacles()
     """
 
-    def __init__(self, config_path: str | Path):
+    def __init__(self, config_path: Union[str, Path]):
         """
         Initialize configuration manager.
 
@@ -475,7 +475,7 @@ class DDFSConfig:
         return f"DDFSConfig(system='{self.system_type}', config_path='{self.config_path}')"
 
 
-def load_config(config_path: str | Path) -> DDFSConfig:
+def load_config(config_path: Union[str, Path]) -> DDFSConfig:
     """
     Convenience function to load configuration.
 

@@ -23,7 +23,7 @@ Key components:
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -105,7 +105,7 @@ class Trajectory:
         """Input dimension."""
         return self.u.shape[1]
 
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """
         Save trajectory to file.
 
@@ -120,7 +120,7 @@ class Trajectory:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(path: Path | str) -> "Trajectory":
+    def load(path: Union[Path, str]) -> "Trajectory":
         """
         Load trajectory from file.
 

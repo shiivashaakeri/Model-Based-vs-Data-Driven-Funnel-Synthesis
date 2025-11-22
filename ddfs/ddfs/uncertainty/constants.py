@@ -25,7 +25,7 @@ Key constants:
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 
@@ -139,6 +139,21 @@ class UncertaintyConstants:
     def num_segments(self) -> int:
         """Number of segments."""
         return len(self.beta_i)
+
+    @property
+    def beta_max(self) -> float:
+        """Maximum beta value across all segments."""
+        return max(self.beta_i) if self.beta_i else 0.0
+
+    @property
+    def beta_min(self) -> float:
+        """Minimum beta value across all segments."""
+        return min(self.beta_i) if self.beta_i else 0.0
+
+    @property
+    def beta_mean(self) -> float:
+        """Mean beta value across all segments."""
+        return float(np.mean(self.beta_i)) if self.beta_i else 0.0
 
     def get_beta(self, segment_idx: int) -> float:
         """
@@ -315,7 +330,7 @@ class UncertaintyConstants:
 
         return valid
 
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """
         Save constants to pickle file.
 
@@ -331,7 +346,7 @@ class UncertaintyConstants:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(path: Path | str) -> "UncertaintyConstants":
+    def load(path: Union[Path, str]) -> "UncertaintyConstants":
         """
         Load constants from pickle file.
 

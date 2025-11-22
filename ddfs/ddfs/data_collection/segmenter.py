@@ -13,7 +13,7 @@ Key components:
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 
@@ -100,7 +100,7 @@ class SegmentedData:
             raise IndexError(f"Segment index {idx} out of range [0, {self.num_segments})")
         return self.segments[idx]
 
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """Save segmented data to file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,7 +108,7 @@ class SegmentedData:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(path: Path | str) -> "SegmentedData":
+    def load(path: Union[Path, str]) -> "SegmentedData":
         """Load segmented data from file."""
         with open(path, "rb") as f:
             return pickle.load(f)
