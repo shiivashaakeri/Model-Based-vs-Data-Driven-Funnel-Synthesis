@@ -5,14 +5,19 @@ Plant models with model mismatch.
 
 This module implements plant models that represent the real system
 with parameters that differ from the digital twin.
-"""
 
-from typing import Any, Dict
+The plant is used for:
+    - Phase 2: Data collection (generating trajectories)
+    - Phase 6: Deployment simulation (closed-loop testing)
+
+The mismatch between plant and twin is quantified in Phase 3 and
+used for robust funnel synthesis in Phase 4.
+"""
 
 import jax.numpy as jnp
 from jax import jit
 
-from .base import PlantModel, TwinModel
+from ddfs.models.base import PlantModel, TwinModel
 
 
 class UnicyclePlant(PlantModel):
@@ -33,24 +38,61 @@ class UnicyclePlant(PlantModel):
         θ̇ = ω
 
     Plant dynamics (with mismatch):
-        ẋ = alpha_v · v cos(θ) + slip_y
-        ẏ = alpha_v · v sin(θ) - slip_x
-        θ̇ = alpha_omega · ω
+        ẋ = rho_v · v cos(θ) + slip_y
+        ẏ = rho_v · v sin(θ) - slip_x
+        θ̇ = rho_omega · ω
 
     where slip introduces lateral drift proportional to velocity.
+
+    Parameters
+    ----------
+    twin : TwinModel
+        Digital twin model
+    velocity_scale : float, optional
+        Velocity scaling factor rho_v (e.g., 0.95 = 5% slower), by default 1.0
+    angular_scale : float, optional
+        Angular velocity scaling rho_omega (e.g., 1.03 = 3% faster), by default 1.0
+    slip_coefficient : float, optional
+        Lateral slip coefficient (0 = no slip), by default 0.0
+
+    Examples
+    --------
+    >>> from ddfs.models.unicycle import UnicycleTwin
+    >>> from ddfs.models.plant import UnicyclePlant
+    >>> import jax.numpy as jnp
+    >>>
+    >>> twin = UnicycleTwin(dt=0.1)
+    >>> plant = UnicyclePlant(twin, velocity_scale=0.95, slip_coefficient=0.02)
+    >>>
+    >>> x = jnp.array([0.0, 0.0, 0.0])
+    >>> u = jnp.array([1.0, 0.5])
+    >>>
+    >>> x_twin = twin.step(x, u)
+    >>> x_plant = plant.step(x, u)
+    >>> mismatch = plant.compute_mismatch(x, u)
+    >>> print(f"Mismatch: {mismatch:.6f}")
     """
 
     def __init__(
-        self, twin: TwinModel, velocity_scale: float = 1.0, angular_scale: float = 1.0, slip_coefficient: float = 0.0
+        self,
+        twin: TwinModel,
+        velocity_scale: float = 1.0,
+        angular_scale: float = 1.0,
+        slip_coefficient: float = 0.0,
     ):
         """
         Initialize unicycle plant with mismatch parameters.
 
-        Args:
-            twin: Digital twin model
-            velocity_scale: Velocity scaling factor alpha_v (e.g., 0.95 = 5% slower)
-            angular_scale: Angular velocity scaling alpha_omega (e.g., 1.03 = 3% faster)
-            slip_coefficient: Lateral slip coefficient (0 = no slip)
+        Parameters
+        ----------
+        twin : TwinModel
+            Digital twin model
+        velocity_scale : float, optional
+            Velocity scaling factor rho_v (e.g., 0.95 = 5% slower)
+        angular_scale : float, optional
+            Angular velocity scaling rho_omega (e.g., 1.03 = 3% faster)
+        slip_coefficient : float, optional
+            Lateral slip coefficient (0 = no slip)
         """
         mismatch_params = {
             "velocity_scale": velocity_scale,
@@ -70,12 +112,17 @@ class UnicyclePlant(PlantModel):
         """
         Apply mismatch to unicycle dynamics.
 
-        Args:
-            x: State [x, y, θ] (3,)
-            u: Input [v, ω] (2,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [x, y, θ], shape (3,)
+        u : jnp.ndarray
+            Input [v, ω], shape (2,)
 
-        Returns:
-            State derivative with mismatch (3,)
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative with mismatch, shape (3,)
         """
         # Extract state and input
         theta = x[2]
@@ -99,6 +146,7 @@ class UnicyclePlant(PlantModel):
         return jnp.array([x_dot, y_dot, theta_dot])
 
     def __repr__(self) -> str:
+        """String representation."""
         return (
             f"UnicyclePlant("
             f"velocity_scale={self.velocity_scale:.3f}, "
@@ -126,6 +174,42 @@ class QuadrotorPlant(PlantModel):
     Input: u = [T, τ] (4D)
         - T: total thrust (scalar)
         - τ: torques [τx, τy, τz] in body frame (3,)
+
+    Parameters
+    ----------
+    twin : TwinModel
+        Digital twin model
+    mass_scale : float, optional
+        Mass scaling factor (e.g., 0.95 = 5% lighter), by default 1.0
+    inertia_scale : float, optional
+        Inertia scaling factor (e.g., 1.05 = 5% higher), by default 1.0
+    drag_coefficient : float, optional
+        Aerodynamic drag coefficient, by default 0.0
+    thrust_efficiency : float, optional
+        Thrust efficiency factor (e.g., 0.9 = 10% loss), by default 1.0
+
+    Attributes
+    ----------
+    m_actual : float
+        Actual mass with mismatch (kg)
+    J_actual : jnp.ndarray
+        Actual inertia tensor with mismatch (3x3)
+
+    Examples
+    --------
+    >>> from ddfs.models.quadrotor import QuadrotorTwin
+    >>> from ddfs.models.plant import QuadrotorPlant
+    >>> import jax.numpy as jnp
+    >>>
+    >>> twin = QuadrotorTwin(mass=0.0293, dt=0.078)
+    >>> plant = QuadrotorPlant(twin, mass_scale=0.98, drag_coefficient=0.01)
+    >>>
+    >>> x = jnp.zeros(13)
+    >>> x = x.at[6].set(1.0)  # Identity quaternion
+    >>> u = jnp.array([0.0293 * 9.81, 0.0, 0.0, 0.0])
+    >>>
+    >>> mismatch = plant.compute_mismatch(x, u)
+    >>> print(f"Mismatch: {mismatch:.6f}")
     """
 
     def __init__(
@@ -139,12 +223,18 @@ class QuadrotorPlant(PlantModel):
         """
         Initialize quadrotor plant with mismatch parameters.
 
-        Args:
-            twin: Digital twin model
-            mass_scale: Mass scaling factor (e.g., 0.95 = 5% lighter)
-            inertia_scale: Inertia scaling factor (e.g., 1.05 = 5% higher)
-            drag_coefficient: Aerodynamic drag coefficient
-            thrust_efficiency: Thrust efficiency factor (e.g., 0.9 = 10% loss)
+        Parameters
+        ----------
+        twin : TwinModel
+            Digital twin model
+        mass_scale : float, optional
+            Mass scaling factor (e.g., 0.95 = 5% lighter)
+        inertia_scale : float, optional
+            Inertia scaling factor (e.g., 1.05 = 5% higher)
+        drag_coefficient : float, optional
+            Aerodynamic drag coefficient
+        thrust_efficiency : float, optional
+            Thrust efficiency factor (e.g., 0.9 = 10% loss)
         """
         mismatch_params = {
             "mass_scale": mass_scale,
@@ -174,15 +264,19 @@ class QuadrotorPlant(PlantModel):
         """
         Apply mismatch to quadrotor dynamics.
 
-        Args:
-            x: State [p, v, q, ω] (13,)
-            u: Input [T, τ] (4,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [p, v, q, ω], shape (13,)
+        u : jnp.ndarray
+            Input [T, τ], shape (4,)
 
-        Returns:
-            State derivative with mismatch (13,)
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative with mismatch, shape (13,)
         """
         # Extract state
-
         vel = x[3:6]
         q = x[6:10]
         omega = x[10:13]
@@ -238,12 +332,17 @@ class QuadrotorPlant(PlantModel):
 
         Uses the formula: v_i = q * v_b * q^*
 
-        Args:
-            q: Quaternion [qw, qx, qy, qz] (4,)
-            v: Vector in body frame (3,)
+        Parameters
+        ----------
+        q : jnp.ndarray
+            Quaternion [qw, qx, qy, qz], shape (4,)
+        v : jnp.ndarray
+            Vector in body frame, shape (3,)
 
-        Returns:
-            Vector in inertial frame (3,)
+        Returns
+        -------
+        v_i : jnp.ndarray
+            Vector in inertial frame, shape (3,)
         """
         qw, qx, qy, qz = q[0], q[1], q[2], q[3]
 
@@ -259,6 +358,7 @@ class QuadrotorPlant(PlantModel):
         return R @ v
 
     def __repr__(self) -> str:
+        """String representation."""
         return (
             f"QuadrotorPlant("
             f"mass_scale={self.mass_scale:.3f}, "
@@ -268,31 +368,46 @@ class QuadrotorPlant(PlantModel):
         )
 
 
-def create_plant_from_config(twin: TwinModel, config: Dict[str, Any]) -> PlantModel:
+def create_plant_from_config(twin: TwinModel, config: dict) -> PlantModel:
     """
     Factory function to create plant from configuration.
 
-    Args:
-        twin: Digital twin model
-        config: Configuration dictionary with mismatch parameters
+    Parameters
+    ----------
+    twin : TwinModel
+        Digital twin model
+    config : dict
+        Configuration dictionary with mismatch parameters
 
-    Returns:
+    Returns
+    -------
+    plant : PlantModel
         Plant model with configured mismatch
 
+    Examples
+    --------
     Example config for unicycle:
-        {
-            'velocity_scale': 0.95,
-            'angular_scale': 1.03,
-            'slip_coefficient': 0.02
-        }
+    >>> config = {
+    ...     'velocity_scale': 0.95,
+    ...     'angular_scale': 1.03,
+    ...     'slip_coefficient': 0.02
+    ... }
 
     Example config for quadrotor:
-        {
-            'mass_scale': 0.98,
-            'inertia_scale': 1.02,
-            'drag_coefficient': 0.01,
-            'thrust_efficiency': 0.95
-        }
+    >>> config = {
+    ...     'mass_scale': 0.98,
+    ...     'inertia_scale': 1.02,
+    ...     'drag_coefficient': 0.01,
+    ...     'thrust_efficiency': 0.95
+    ... }
+
+    Usage:
+    >>> from ddfs.models.unicycle import UnicycleTwin
+    >>> from ddfs.models.plant import create_plant_from_config
+    >>>
+    >>> twin = UnicycleTwin(dt=0.1)
+    >>> config = {'velocity_scale': 0.95, 'angular_scale': 1.03, 'slip_coefficient': 0.02}
+    >>> plant = create_plant_from_config(twin, config)
     """
     # Determine plant type from twin class name
     twin_type = twin.__class__.__name__

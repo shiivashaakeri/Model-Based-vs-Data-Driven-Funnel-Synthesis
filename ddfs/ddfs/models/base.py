@@ -6,10 +6,25 @@ Base classes for dynamics models.
 This module provides abstract base classes for system dynamics models
 used in the DDFS pipeline. All models use JAX for automatic differentiation
 and high-performance computation.
+
+Key Classes
+-----------
+DynamicsModel : Abstract base for all dynamics models
+    - Implements continuous dynamics f(x, u)
+    - Provides RK4 integration for discrete-time stepping
+    - Auto-differentiates Jacobians using JAX
+
+TwinModel : Digital twin (nominal model for planning)
+    - Used in Phase 1 for trajectory planning
+    - Approximate model with nominal parameters
+
+PlantModel : Real system (actual dynamics with mismatch)
+    - Used in Phase 2 for data collection
+    - Includes model mismatch relative to twin
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import jax.numpy as jnp
 from jax import jacfwd, jit
@@ -19,19 +34,33 @@ class DynamicsModel(ABC):
     """
     Abstract base class for continuous-time dynamics models.
 
-    Implements:
-        - Continuous dynamics: ẋ = f(x, u)
+    All dynamics models implement:
+        ẋ = f(x, u)
+
+    And provide:
         - Discrete-time integration (RK4)
         - Jacobian computation via JAX autodiff
         - State and input dimension properties
+
+    Parameters
+    ----------
+    dt : float
+        Discretization timestep (seconds)
+
+    Attributes
+    ----------
+    dt : float
+        Timestep for discrete-time integration
     """
 
     def __init__(self, dt: float = 0.1):
         """
         Initialize dynamics model.
 
-        Args:
-            dt: Discretization timestep (seconds)
+        Parameters
+        ----------
+        dt : float, optional
+            Discretization timestep (seconds), by default 0.1
         """
         self.dt = dt
 
@@ -56,12 +85,20 @@ class DynamicsModel(ABC):
         """
         Continuous-time dynamics: ẋ = f(x, u).
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        This is the core dynamics function that must be implemented
+        by all subclasses.
 
-        Returns:
-            State derivative ẋ (n,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
+
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative ẋ, shape (n,)
         """
         pass
 
@@ -69,12 +106,17 @@ class DynamicsModel(ABC):
         """
         Evaluate continuous-time dynamics (JIT-compiled).
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
 
-        Returns:
-            State derivative ẋ (n,)
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative ẋ, shape (n,)
         """
         return self._dynamics_jit(x, u)
 
@@ -82,13 +124,26 @@ class DynamicsModel(ABC):
         """
         Single RK4 integration step.
 
-        Args:
-            x: Current state (n,)
-            u: Control input (m,)
-            dt: Timestep
+        Implements 4th-order Runge-Kutta integration:
+            k1 = f(x, u)
+            k2 = f(x + dt/2 * k1, u)
+            k3 = f(x + dt/2 * k2, u)
+            k4 = f(x + dt * k3, u)
+            x_next = x + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
 
-        Returns:
-            Next state x(t+dt) (n,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            Current state, shape (n,)
+        u : jnp.ndarray
+            Control input, shape (m,)
+        dt : float
+            Timestep
+
+        Returns
+        -------
+        x_next : jnp.ndarray
+            Next state x(t+dt), shape (n,)
         """
         k1 = self._dynamics(x, u)
         k2 = self._dynamics(x + 0.5 * dt * k1, u)
@@ -100,17 +155,23 @@ class DynamicsModel(ABC):
 
     def step(self, x: jnp.ndarray, u: jnp.ndarray, dt: Optional[float] = None) -> jnp.ndarray:
         """
-        Discrete-time step: x(t+dt) = x(t) + ∫[t, t+dt] f(x, u) dτ.
+        Discrete-time step: x(t+dt) = integrate[f(x,u)] from t to t+dt.
 
-        Uses 4th-order Runge-Kutta integration (RK4).
+        Uses 4th-order Runge-Kutta integration for high accuracy.
 
-        Args:
-            x: Current state (n,)
-            u: Control input (m,)
-            dt: Timestep (uses self.dt if None)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            Current state, shape (n,)
+        u : jnp.ndarray
+            Control input, shape (m,)
+        dt : float, optional
+            Timestep (uses self.dt if None)
 
-        Returns:
-            Next state x(t+dt) (n,)
+        Returns
+        -------
+        x_next : jnp.ndarray
+            Next state x(t+dt), shape (n,)
         """
         if dt is None:
             dt = self.dt
@@ -118,32 +179,42 @@ class DynamicsModel(ABC):
 
     def jacobian_state(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
         """
-        Compute Jacobian w.r.t. state: ∂f/∂x.
+        Compute Jacobian w.r.t. state: A = ∂f/∂x.
 
         Uses JAX automatic differentiation.
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
 
-        Returns:
-            Jacobian matrix A = ∂f/∂x (n, n)
+        Returns
+        -------
+        A : jnp.ndarray
+            Jacobian matrix A = ∂f/∂x, shape (n, n)
         """
         jac_fn = jacfwd(self._dynamics, argnums=0)
         return jac_fn(x, u)
 
     def jacobian_input(self, x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
         """
-        Compute Jacobian w.r.t. input: ∂f/∂u.
+        Compute Jacobian w.r.t. input: B = ∂f/∂u.
 
         Uses JAX automatic differentiation.
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
 
-        Returns:
-            Jacobian matrix B = ∂f/∂u (n, m)
+        Returns
+        -------
+        B : jnp.ndarray
+            Jacobian matrix B = ∂f/∂u, shape (n, m)
         """
         jac_fn = jacfwd(self._dynamics, argnums=1)
         return jac_fn(x, u)
@@ -152,12 +223,19 @@ class DynamicsModel(ABC):
         """
         Compute both Jacobians: A = ∂f/∂x, B = ∂f/∂u.
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
 
-        Returns:
-            (A, B): Jacobian matrices (n, n) and (n, m)
+        Returns
+        -------
+        A : jnp.ndarray
+            State Jacobian, shape (n, n)
+        B : jnp.ndarray
+            Input Jacobian, shape (n, m)
         """
         A = self.jacobian_state(x, u)
         B = self.jacobian_input(x, u)
@@ -170,12 +248,19 @@ class DynamicsModel(ABC):
         Linear approximation: δẋ ≈ A δx + B δu
         where A = ∂f/∂x|(x̄,ū), B = ∂f/∂u|(x̄,ū)
 
-        Args:
-            x_bar: Operating point state (n,)
-            u_bar: Operating point input (m,)
+        Parameters
+        ----------
+        x_bar : jnp.ndarray
+            Operating point state, shape (n,)
+        u_bar : jnp.ndarray
+            Operating point input, shape (m,)
 
-        Returns:
-            (A, B): Linearized dynamics matrices
+        Returns
+        -------
+        A : jnp.ndarray
+            Linearized state matrix, shape (n, n)
+        B : jnp.ndarray
+            Linearized input matrix, shape (n, m)
         """
         return self.jacobians(x_bar, u_bar)
 
@@ -183,13 +268,19 @@ class DynamicsModel(ABC):
         """
         Simulate full trajectory from initial state.
 
-        Args:
-            x0: Initial state (n,)
-            u_traj: Control trajectory (N, m)
-            dt: Timestep (uses self.dt if None)
+        Parameters
+        ----------
+        x0 : jnp.ndarray
+            Initial state, shape (n,)
+        u_traj : jnp.ndarray
+            Control trajectory, shape (N, m)
+        dt : float, optional
+            Timestep (uses self.dt if None)
 
-        Returns:
-            State trajectory (N+1, n)
+        Returns
+        -------
+        x_traj : jnp.ndarray
+            State trajectory, shape (N+1, n)
         """
         if dt is None:
             dt = self.dt
@@ -204,15 +295,29 @@ class DynamicsModel(ABC):
         return x_traj
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"{self.__class__.__name__}(state_dim={self.state_dim}, input_dim={self.input_dim}, dt={self.dt})"
 
 
 class TwinModel(DynamicsModel):
     """
-    Digital twin model with approximate/nominal parameters.
+    Digital twin model with nominal/approximate parameters.
 
-    This is the model used for planning (Phase 1). It may not
-    perfectly match the real plant dynamics.
+    This is the model used for planning in Phase 1. It represents
+    our best understanding of the system dynamics, but may not
+    perfectly match the real plant.
+
+    The twin is used for:
+        - Phase 1: Trajectory planning (SCvx)
+        - Phase 3: Uncertainty quantification (computing mismatch)
+        - Phase 4: Funnel synthesis (linearization)
+
+    Notes
+    -----
+    Subclasses must implement:
+        - state_dim property
+        - input_dim property
+        - _dynamics(x, u) method
     """
 
     pass
@@ -224,15 +329,36 @@ class PlantModel(DynamicsModel):
 
     In simulation, this includes model mismatch relative to the twin.
     In reality, this would be the actual robot hardware.
+
+    The plant is used for:
+        - Phase 2: Data collection (generating trajectories)
+        - Phase 6: Deployment simulation (closed-loop testing)
+
+    Parameters
+    ----------
+    twin : TwinModel
+        Associated digital twin model
+    mismatch_params : dict, optional
+        Parameters defining plant-twin mismatch
+
+    Attributes
+    ----------
+    twin : TwinModel
+        Reference to the digital twin
+    mismatch_params : dict
+        Mismatch parameters (system-specific)
     """
 
-    def __init__(self, twin: TwinModel, mismatch_params: Optional[Dict[str, Any]] = None):
+    def __init__(self, twin: TwinModel, mismatch_params: Optional[dict] = None):
         """
         Initialize plant model with mismatch relative to twin.
 
-        Args:
-            twin: Digital twin model
-            mismatch_params: Parameters defining plant-twin mismatch
+        Parameters
+        ----------
+        twin : TwinModel
+            Digital twin model
+        mismatch_params : dict, optional
+            Parameters defining plant-twin mismatch
         """
         super().__init__(dt=twin.dt)
         self.twin = twin
@@ -240,10 +366,12 @@ class PlantModel(DynamicsModel):
 
     @property
     def state_dim(self) -> int:
+        """State dimension (inherited from twin)."""
         return self.twin.state_dim
 
     @property
     def input_dim(self) -> int:
+        """Input dimension (inherited from twin)."""
         return self.twin.input_dim
 
     @abstractmethod
@@ -251,12 +379,20 @@ class PlantModel(DynamicsModel):
         """
         Apply model mismatch to dynamics.
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        This method must be implemented by subclasses to define
+        how the plant differs from the twin.
 
-        Returns:
-            State derivative with mismatch applied (n,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
+
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative with mismatch applied, shape (n,)
         """
         pass
 
@@ -264,12 +400,19 @@ class PlantModel(DynamicsModel):
         """
         Plant dynamics with mismatch.
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        Calls the subclass-specific _apply_mismatch method.
 
-        Returns:
-            State derivative ẋ (n,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
+
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative ẋ, shape (n,)
         """
         return self._apply_mismatch(x, u)
 
@@ -277,32 +420,47 @@ class PlantModel(DynamicsModel):
         """
         Compute plant-twin mismatch at (x, u).
 
-        gamma(x, u) = ||f_plant(x, u) - f_twin(x, u)||
+        Mismatch magnitude:
+            gamma(x, u) = ||f_plant(x, u) - f_twin(x, u)||
 
-        Args:
-            x: State vector (n,)
-            u: Input vector (m,)
+        This is used in Phase 3 for uncertainty quantification.
 
-        Returns:
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State vector, shape (n,)
+        u : jnp.ndarray
+            Input vector, shape (m,)
+
+        Returns
+        -------
+        gamma : float
             Mismatch magnitude gamma
         """
         f_plant = self._dynamics(x, u)
         f_twin = self.twin._dynamics(x, u)
-        return jnp.linalg.norm(f_plant - f_twin)
+        return float(jnp.linalg.norm(f_plant - f_twin))
 
 
 def validate_state_input_dims(x: jnp.ndarray, u: jnp.ndarray, expected_state_dim: int, expected_input_dim: int) -> None:
     """
     Validate state and input dimensions.
 
-    Args:
-        x: State vector
-        u: Input vector
-        expected_state_dim: Expected state dimension
-        expected_input_dim: Expected input dimension
+    Parameters
+    ----------
+    x : jnp.ndarray
+        State vector
+    u : jnp.ndarray
+        Input vector
+    expected_state_dim : int
+        Expected state dimension
+    expected_input_dim : int
+        Expected input dimension
 
-    Raises:
-        ValueError: If dimensions don't match
+    Raises
+    ------
+    ValueError
+        If dimensions don't match expected values
     """
     if x.shape[-1] != expected_state_dim:
         raise ValueError(f"State dimension mismatch: got {x.shape[-1]}, expected {expected_state_dim}")

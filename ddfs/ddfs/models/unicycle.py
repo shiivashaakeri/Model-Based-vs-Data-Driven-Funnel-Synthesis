@@ -18,36 +18,54 @@ Dynamics:
     ẋ = v cos(θ)
     ẏ = v sin(θ)
     θ̇ = ω
-"""
 
-from typing import Any, Dict
+Notes
+-----
+- This is a KINEMATIC model (no mass, no inertia)
+- Constraints are defined in ddfs.core.constraints
+- Plant mismatch is defined in ddfs.models.plant
+"""
 
 import jax.numpy as jnp
 
-from .base import TwinModel
+from ddfs.models.base import TwinModel
 
 
 class UnicycleTwin(TwinModel):
     """
     Kinematic unicycle model (digital twin).
 
-    This is the approximate model used for planning in Phase 1.
+    This is the nominal model used for planning in Phase 1.
     The actual plant may have model mismatch (velocity scaling, slip, etc.).
 
     State dimension: n = 3
     Input dimension: m = 2
 
-    Constraints (typical):
-        State: x ∈ workspace, θ ∈ [-π, π]
-        Input: v ∈ [v_min, v_max], ω ∈ [-ω_max, ω_max]
+    Parameters
+    ----------
+    dt : float, optional
+        Discretization timestep (seconds), by default 0.1
+
+    Examples
+    --------
+    >>> from ddfs.models.unicycle import UnicycleTwin
+    >>> import jax.numpy as jnp
+    >>>
+    >>> twin = UnicycleTwin(dt=0.1)
+    >>> x = jnp.array([0.0, 0.0, 0.0])  # At origin, facing right
+    >>> u = jnp.array([1.0, 0.5])       # Moving forward with turning
+    >>> x_next = twin.step(x, u)
+    >>> print(x_next)
     """
 
     def __init__(self, dt: float = 0.1):
         """
         Initialize unicycle twin model.
 
-        Args:
-            dt: Discretization timestep (seconds)
+        Parameters
+        ----------
+        dt : float, optional
+            Discretization timestep (seconds), by default 0.1
         """
         super().__init__(dt=dt)
 
@@ -65,12 +83,22 @@ class UnicycleTwin(TwinModel):
         """
         Kinematic unicycle dynamics: ẋ = f(x, u).
 
-        Args:
-            x: State [x, y, θ] (3,)
-            u: Input [v, ω] (2,)
+        Implements the standard kinematic unicycle model:
+            ẋ = v cos(θ)
+            ẏ = v sin(θ)
+            θ̇ = ω
 
-        Returns:
-            State derivative [ẋ, ẏ, θ̇] (3,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [x, y, θ], shape (3,)
+        u : jnp.ndarray
+            Input [v, ω], shape (2,)
+
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative [ẋ, ẏ, θ̇], shape (3,)
         """
         # Extract state
         theta = x[2]
@@ -90,11 +118,22 @@ class UnicycleTwin(TwinModel):
         """
         Normalize state by wrapping angle to [-π, π].
 
-        Args:
-            x: State [x, y, θ] (3,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [x, y, θ], shape (3,)
 
-        Returns:
-            Normalized state with θ ∈ [-π, π] (3,)
+        Returns
+        -------
+        x_normalized : jnp.ndarray
+            Normalized state with θ ∈ [-π, π], shape (3,)
+
+        Examples
+        --------
+        >>> twin = UnicycleTwin()
+        >>> x = jnp.array([1.0, 2.0, 4.0])  # θ > π
+        >>> x_norm = twin.normalize_state(x)
+        >>> print(x_norm[2])  # Should be wrapped to [-π, π]
         """
         x_norm = x.at[2].set(jnp.arctan2(jnp.sin(x[2]), jnp.cos(x[2])))
         return x_norm
@@ -104,206 +143,71 @@ class UnicycleTwin(TwinModel):
         Compute distance between two states.
 
         Uses Euclidean distance for position and angular difference for heading:
-        d = √[(x₁-x₂)² + (y₁-y₂)² + (θ₁-θ₂)²]
+            d = √[(x₁-x₂)² + (y₁-y₂)² + (θ₁-θ₂)²]
 
-        where angular difference wraps around ±π.
+        where angular difference is wrapped to [-π, π].
 
-        Args:
-            x1: First state [x, y, θ] (3,)
-            x2: Second state [x, y, θ] (3,)
+        Parameters
+        ----------
+        x1 : jnp.ndarray
+            First state [x, y, θ], shape (3,)
+        x2 : jnp.ndarray
+            Second state [x, y, θ], shape (3,)
 
-        Returns:
+        Returns
+        -------
+        distance : float
             Distance between states
+
+        Examples
+        --------
+        >>> twin = UnicycleTwin()
+        >>> x1 = jnp.array([0.0, 0.0, 0.0])
+        >>> x2 = jnp.array([1.0, 1.0, jnp.pi/4])
+        >>> dist = twin.state_distance(x1, x2)
         """
         # Position distance
         pos_diff = x1[:2] - x2[:2]
         pos_dist = jnp.linalg.norm(pos_diff)
 
-        # Angular distance (wrapped)
+        # Angular distance (wrapped to [-π, π])
         theta_diff = jnp.arctan2(jnp.sin(x1[2] - x2[2]), jnp.cos(x1[2] - x2[2]))
 
         # Combined distance
-        return jnp.sqrt(pos_dist**2 + theta_diff**2)
+        return float(jnp.sqrt(pos_dist**2 + theta_diff**2))
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"UnicycleTwin(state_dim={self.state_dim}, input_dim={self.input_dim}, dt={self.dt})"
 
 
-class UnicycleConstraints:
+def create_unicycle_example() -> dict:
     """
-    State and input constraints for unicycle.
+    Create example unicycle configuration matching specifications.
 
-    Typical constraints:
-        - Workspace bounds: x ∈ [x_min, x_max], y ∈ [y_min, y_max]
-        - Heading: θ ∈ [-π, π] (always satisfied by normalization)
-        - Velocity: v ∈ [v_min, v_max]
-        - Angular velocity: ω ∈ [-ω_max, ω_max]
-    """
-
-    def __init__(
-        self,
-        x_min: float = -10.0,
-        x_max: float = 10.0,
-        y_min: float = -10.0,
-        y_max: float = 10.0,
-        v_min: float = 0.0,
-        v_max: float = 2.0,
-        omega_max: float = 2.0,
-    ):
-        """
-        Initialize unicycle constraints.
-
-        Args:
-            x_min: Minimum x position (m)
-            x_max: Maximum x position (m)
-            y_min: Minimum y position (m)
-            y_max: Maximum y position (m)
-            v_min: Minimum linear velocity (m/s)
-            v_max: Maximum linear velocity (m/s)
-            omega_max: Maximum angular velocity magnitude (rad/s)
-        """
-        # State bounds
-        self.x_min = jnp.array([x_min, y_min, -jnp.pi])
-        self.x_max = jnp.array([x_max, y_max, jnp.pi])
-
-        # Input bounds
-        self.u_min = jnp.array([v_min, -omega_max])
-        self.u_max = jnp.array([v_max, omega_max])
-
-    def check_state(self, x: jnp.ndarray) -> bool:
-        """
-        Check if state satisfies constraints.
-
-        Args:
-            x: State [x, y, θ] (3,)
-
-        Returns:
-            True if x is within bounds
-        """
-        return jnp.all(x >= self.x_min) and jnp.all(x <= self.x_max)
-
-    def check_input(self, u: jnp.ndarray) -> bool:
-        """
-        Check if input satisfies constraints.
-
-        Args:
-            u: Input [v, ω] (2,)
-
-        Returns:
-            True if u is within bounds
-        """
-        return jnp.all(u >= self.u_min) and jnp.all(u <= self.u_max)
-
-    def clip_state(self, x: jnp.ndarray) -> jnp.ndarray:
-        """
-        Clip state to satisfy constraints.
-
-        Args:
-            x: State [x, y, θ] (3,)
-
-        Returns:
-            Clipped state (3,)
-        """
-        return jnp.clip(x, self.x_min, self.x_max)
-
-    def clip_input(self, u: jnp.ndarray) -> jnp.ndarray:
-        """
-        Clip input to satisfy constraints.
-
-        Args:
-            u: Input [v, ω] (2,)
-
-        Returns:
-            Clipped input (2,)
-        """
-        return jnp.clip(u, self.u_min, self.u_max)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert constraints to dictionary format.
-
-        Returns:
-            Dictionary with constraint parameters
-        """
-        return {
-            "state_bounds": {
-                "x_min": float(self.x_min[0]),
-                "x_max": float(self.x_max[0]),
-                "y_min": float(self.x_min[1]),
-                "y_max": float(self.x_max[1]),
-                "theta_min": float(self.x_min[2]),
-                "theta_max": float(self.x_max[2]),
-            },
-            "input_bounds": {
-                "v_min": float(self.u_min[0]),
-                "v_max": float(self.u_max[0]),
-                "omega_min": float(self.u_min[1]),
-                "omega_max": float(self.u_max[1]),
-            },
-        }
-
-    @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "UnicycleConstraints":
-        """
-        Create constraints from configuration dictionary.
-
-        Args:
-            config: Configuration with 'state_bounds' and 'input_bounds'
-
-        Returns:
-            UnicycleConstraints instance
-
-        Example config:
-            {
-                'state_bounds': {
-                    'x_min': 0.0, 'x_max': 10.0,
-                    'y_min': 0.0, 'y_max': 8.0
-                },
-                'input_bounds': {
-                    'v_min': 0.0, 'v_max': 2.0,
-                    'omega_max': 2.0
-                }
-            }
-        """
-        state_bounds = config.get("state_bounds", {})
-        input_bounds = config.get("input_bounds", {})
-
-        return cls(
-            x_min=state_bounds.get("x_min", -10.0),
-            x_max=state_bounds.get("x_max", 10.0),
-            y_min=state_bounds.get("y_min", -10.0),
-            y_max=state_bounds.get("y_max", 10.0),
-            v_min=input_bounds.get("v_min", 0.0),
-            v_max=input_bounds.get("v_max", 2.0),
-            omega_max=input_bounds.get("omega_max", 2.0),
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"UnicycleConstraints("
-            f"x∈[{self.x_min[0]:.1f}, {self.x_max[0]:.1f}], "
-            f"y∈[{self.x_min[1]:.1f}, {self.x_max[1]:.1f}], "
-            f"v∈[{self.u_min[0]:.1f}, {self.u_max[0]:.1f}], "
-            f"ω∈[{self.u_min[1]:.1f}, {self.u_max[1]:.1f}])"
-        )
-
-
-def create_unicycle_example() -> Dict[str, Any]:
-    """
-    Create example unicycle configuration matching your specifications.
-
-    Based on:
+    Based on typical unicycle problem:
         n = 3, m = 2
-        tf = 8, T = 61, dt = tf/T
+        tf = 8.0 seconds
+        N = 61 timesteps
+        dt = tf/N ≈ 0.131 seconds
         x_0 = [1.0, 1.0, 0]
         x_des = [10, 5.5, 0]
-        u1_max = 2, u1_min = 0, u2_max = 2
-        num_obs = 2
-        obs = [[4, 3], [8, 3]]
-        obs_r = 1
+        v ∈ [0, 2] m/s
+        ω ∈ [-2, 2] rad/s
+        workspace: x ∈ [0, 12], y ∈ [0, 8]
+        obstacles: 2 circles at [4, 3] and [8, 3], radius 1.0
 
-    Returns:
-        Configuration dictionary
+    Returns
+    -------
+    config : dict
+        Configuration dictionary with system, planning, constraints, and obstacles
+
+    Examples
+    --------
+    >>> from ddfs.models.unicycle import create_unicycle_example
+    >>> config = create_unicycle_example()
+    >>> print(config['system']['dt'])
+    0.13114754098360656
     """
     return {
         "system": {
@@ -312,14 +216,47 @@ def create_unicycle_example() -> Dict[str, Any]:
             "input_dim": 2,
             "dt": 8.0 / 61,  # ≈ 0.131 seconds
         },
-        "planning": {"tf": 8.0, "N": 61, "x0": [1.0, 1.0, 0.0], "xf": [10.0, 5.5, 0.0]},
+        "planning": {
+            "tf": 8.0,
+            "N": 61,
+            "x0": [1.0, 1.0, 0.0],
+            "xf": [10.0, 5.5, 0.0],
+        },
         "constraints": {
-            "state_bounds": {"x_min": 0.0, "x_max": 12.0, "y_min": 0.0, "y_max": 8.0},
-            "input_bounds": {"v_min": 0.0, "v_max": 2.0, "omega_max": 2.0},
+            "state_bounds": {
+                "x_min": 0.0,
+                "x_max": 12.0,
+                "y_min": 0.0,
+                "y_max": 8.0,
+                "theta_min": -3.141592653589793,
+                "theta_max": 3.141592653589793,
+            },
+            "input_bounds": {
+                "v_min": 0.0,
+                "v_max": 2.0,
+                "omega_min": -2.0,
+                "omega_max": 2.0,
+            },
         },
         "obstacles": [
-            {"id": "obs_1", "type": "circle", "center": [4.0, 3.0], "radius": 1.0},
-            {"id": "obs_2", "type": "circle", "center": [8.0, 3.0], "radius": 1.0},
+            {
+                "id": "obs_1",
+                "type": "circle",
+                "center": [4.0, 3.0],
+                "radius": 1.0,
+                "safety_margin": 0.25,
+            },
+            {
+                "id": "obs_2",
+                "type": "circle",
+                "center": [8.0, 3.0],
+                "radius": 1.0,
+                "safety_margin": 0.25,
+            },
         ],
-        "plant_mismatch": {"velocity_scale": 0.95, "angular_scale": 1.03, "slip_coefficient": 0.02},
+        "plant_mismatch": {
+            "velocity_scale": 0.95,  # Plant moves 5% slower
+            "angular_scale": 1.03,  # Plant turns 3% faster
+            "slip_coefficient": 0.02,  # Lateral slip
+        },
     }

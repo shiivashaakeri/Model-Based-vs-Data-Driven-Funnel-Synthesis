@@ -9,40 +9,82 @@ This package provides dynamics models for the DDFS pipeline:
 - Plant models (real systems with mismatch)
 - System-specific implementations (unicycle, quadrotor)
 
-Available models:
-    - UnicycleTwin: Kinematic unicycle (3D state, 2D input)
-    - UnicyclePlant: Unicycle with model mismatch
-    - QuadrotorTwin: Full 3D quadrotor (13D state, 4D input)
-    - QuadrotorPlant: Quadrotor with model mismatch
+Available Models
+----------------
+UnicycleTwin : Kinematic unicycle model (digital twin)
+    State: [x, y, θ] (3D)
+    Input: [v, ω] (2D)
 
-Available constraint classes:
-    - UnicycleConstraints: State and input constraints for unicycle
-    - QuadrotorConstraints: State and input constraints for quadrotor
+UnicyclePlant : Unicycle with model mismatch
+    Mismatch: velocity scaling, angular scaling, slip
 
-Usage:
+QuadrotorTwin : Full 3D quadrotor model (digital twin)
+    State: [p, v, q, ω] (13D)
+    Input: [T, τ] (4D)
+
+QuadrotorPlant : Quadrotor with model mismatch
+    Mismatch: mass, inertia, drag, thrust efficiency
+
+Usage Examples
+--------------
+Creating a unicycle twin:
+    >>> from ddfs.models import UnicycleTwin
+    >>> twin = UnicycleTwin(dt=0.1)
+    >>> print(twin.state_dim, twin.input_dim)
+    3 2
+
+Creating a unicycle plant with mismatch:
     >>> from ddfs.models import UnicycleTwin, UnicyclePlant
     >>> twin = UnicycleTwin(dt=0.1)
-    >>> plant = UnicyclePlant(twin, velocity_scale=0.95)
-    >>> x = jnp.array([0.0, 0.0, 0.0])
-    >>> u = jnp.array([1.0, 0.5])
-    >>> x_next = plant.step(x, u)
+    >>> plant = UnicyclePlant(twin, velocity_scale=0.95, slip_coefficient=0.02)
+
+Using the factory function:
+    >>> from ddfs.models import UnicycleTwin, create_plant_from_config
+    >>> twin = UnicycleTwin(dt=0.1)
+    >>> config = {'velocity_scale': 0.95, 'angular_scale': 1.03}
+    >>> plant = create_plant_from_config(twin, config)
+
+Creating example configurations:
+    >>> from ddfs.models import create_unicycle_example, create_quadrotor_example
+    >>> unicycle_config = create_unicycle_example()
+    >>> quadrotor_config = create_quadrotor_example()
+
+Notes
+-----
+- Constraints are NOT in this package (see ddfs.core.constraints)
+- Obstacles are NOT in this package (see ddfs.core.obstacles)
+- This package focuses solely on system dynamics
 """
 
-from .base import DynamicsModel, PlantModel, TwinModel, validate_state_input_dims
-from .plant import QuadrotorPlant, UnicyclePlant, create_plant_from_config
-from .quadrotor import QuadrotorConstraints, QuadrotorTwin, create_quadrotor_example
-from .unicycle import UnicycleConstraints, UnicycleTwin, create_unicycle_example
+# Base classes
+from ddfs.models.base import (
+    DynamicsModel,
+    PlantModel,
+    TwinModel,
+    validate_state_input_dims,
+)
+
+# Plant models (with mismatch)
+from ddfs.models.plant import (
+    QuadrotorPlant,
+    UnicyclePlant,
+    create_plant_from_config,
+)
+
+# Quadrotor models
+from ddfs.models.quadrotor import QuadrotorTwin, create_quadrotor_example
+
+# Unicycle models
+from ddfs.models.unicycle import UnicycleTwin, create_unicycle_example
 
 __all__ = [
     # Base classes
     "DynamicsModel",
     "PlantModel",
-    "QuadrotorConstraints",
     "QuadrotorPlant",
     # Quadrotor
     "QuadrotorTwin",
     "TwinModel",
-    "UnicycleConstraints",
     "UnicyclePlant",
     # Unicycle
     "UnicycleTwin",

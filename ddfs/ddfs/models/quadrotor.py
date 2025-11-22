@@ -1,4 +1,5 @@
 # ddfs/ddfs/models/quadrotor.py
+
 """
 Quadrotor dynamics model.
 
@@ -14,66 +15,105 @@ State: x = [p, v, q, ω] (13D)
 
 Input: u = [T, τ] (4D)
     - T: total thrust (N)
-    - τ: torques [τx, τy, τz] in body frame (N⋅m) (3,)
+    - τ: torques [τx, τy, τz] in body frame (N·m) (3,)
 
 Dynamics:
-    ṗ = v
+    ṗ = v
     v̇ = (R(q) * [0, 0, -T]ᵀ + [0, 0, mg]ᵀ) / m
     q̇ = 0.5 * Ω(ω) * q
     ω̇ = J⁻¹ * (τ - ω x (J * ω))
 
 where R(q) is the rotation matrix from body to inertial frame.
+
+Convention: NED (North-East-Down) frame
+    - z axis points downward
+    - gravity is positive in z direction
+
+Notes
+-----
+- Constraints are defined in ddfs.core.constraints
+- Plant mismatch is defined in ddfs.models.plant
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Tuple
 
 import jax.numpy as jnp
 
-from .base import TwinModel
+from ddfs.models.base import TwinModel
 
 
 class QuadrotorTwin(TwinModel):
     """
     Full 3D quadrotor model with quaternion attitude (digital twin).
 
-    This is the approximate model used for planning in Phase 1.
+    This is the nominal model used for planning in Phase 1.
     The actual plant may have model mismatch (mass, inertia, drag, etc.).
 
     State dimension: n = 13
     Input dimension: m = 4
 
-    Convention: NED (North-East-Down) frame
-        - z axis points downward
-        - gravity is positive in z direction
+    Parameters
+    ----------
+    mass : float, optional
+        Quadrotor mass (kg), by default 0.0293
+    inertia : jnp.ndarray, optional
+        Inertia tensor (3x3 diagonal matrix, kg·m²), by default scaled values
+    gravity : float, optional
+        Gravitational acceleration (m/s²), by default 9.81
+    dt : float, optional
+        Discretization timestep (seconds), by default 0.1
 
-    Parameters:
-        - m: mass (kg)
-        - J: inertia tensor (kg⋅m²) - 3x3 diagonal matrix
-        - g: gravitational acceleration (m/s²)
+    Attributes
+    ----------
+    m : float
+        Mass (kg)
+    J : jnp.ndarray
+        Inertia tensor (3x3)
+    J_inv : jnp.ndarray
+        Inverse inertia tensor (3x3)
+    g : float
+        Gravitational acceleration (m/s²)
+
+    Examples
+    --------
+    >>> from ddfs.models.quadrotor import QuadrotorTwin
+    >>> import jax.numpy as jnp
+    >>>
+    >>> twin = QuadrotorTwin(mass=0.0293, dt=0.078)
+    >>> # Hover at origin: p=[0,0,0], v=[0,0,0], q=[1,0,0,0], ω=[0,0,0]
+    >>> x = jnp.zeros(13)
+    >>> x = x.at[6].set(1.0)  # qw = 1 (identity quaternion)
+    >>> u = jnp.array([0.0293 * 9.81, 0.0, 0.0, 0.0])  # Hover thrust
+    >>> x_next = twin.step(x, u)
     """
 
     def __init__(
         self,
-        mass: float = 0.0293,  # kg (from your spec)
-        inertia: Optional[jnp.ndarray] = None,
+        mass: float = 0.0293,
+        inertia: jnp.ndarray = None,
         gravity: float = 9.81,
         dt: float = 0.1,
     ):
         """
         Initialize quadrotor twin model.
 
-        Args:
-            mass: Quadrotor mass (kg)
-            inertia: Inertia tensor (3x3 diagonal matrix). If None, uses default.
-            gravity: Gravitational acceleration (m/s²)
-            dt: Discretization timestep (seconds)
+        Parameters
+        ----------
+        mass : float, optional
+            Quadrotor mass (kg), by default 0.0293
+        inertia : jnp.ndarray, optional
+            Inertia tensor (3x3 diagonal), by default scaled from spec
+        gravity : float, optional
+            Gravitational acceleration (m/s²), by default 9.81
+        dt : float, optional
+            Discretization timestep (seconds), by default 0.1
         """
         super().__init__(dt=dt)
 
         self.m = mass
         self.g = gravity
 
-        # Default inertia from your spec (scaled by 100)
+        # Default inertia from spec (scaled by 100)
         if inertia is None:
             self.J = jnp.diag(jnp.array([1.8203e-5, 1.8186e-5, 3.4484e-5])) * 100.0
         else:
@@ -96,18 +136,23 @@ class QuadrotorTwin(TwinModel):
         """
         Quadrotor dynamics: ẋ = f(x, u).
 
-        Args:
-            x: State [p, v, q, ω] (13,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [p, v, q, ω], shape (13,)
                 - p: position (3,)
                 - v: velocity (3,)
                 - q: quaternion (4,)
                 - ω: angular velocity (3,)
-            u: Input [T, τ] (4,)
+        u : jnp.ndarray
+            Input [T, τ], shape (4,)
                 - T: thrust (scalar)
                 - τ: torques (3,)
 
-        Returns:
-            State derivative (13,)
+        Returns
+        -------
+        x_dot : jnp.ndarray
+            State derivative, shape (13,)
         """
         # Extract state components
         vel = x[3:6]
@@ -165,12 +210,17 @@ class QuadrotorTwin(TwinModel):
         Quaternion convention: q = [qw, qx, qy, qz]
         Rotation: v_i = R(q) * v_b
 
-        Args:
-            q: Quaternion [qw, qx, qy, qz] (4,)
-            v: Vector in body frame (3,)
+        Parameters
+        ----------
+        q : jnp.ndarray
+            Quaternion [qw, qx, qy, qz], shape (4,)
+        v : jnp.ndarray
+            Vector in body frame, shape (3,)
 
-        Returns:
-            Vector in inertial frame (3,)
+        Returns
+        -------
+        v_i : jnp.ndarray
+            Vector in inertial frame, shape (3,)
         """
         qw, qx, qy, qz = q[0], q[1], q[2], q[3]
 
@@ -189,11 +239,23 @@ class QuadrotorTwin(TwinModel):
         """
         Normalize state by ensuring quaternion has unit norm.
 
-        Args:
-            x: State [p, v, q, ω] (13,)
+        Parameters
+        ----------
+        x : jnp.ndarray
+            State [p, v, q, ω], shape (13,)
 
-        Returns:
-            Normalized state with ||q|| = 1 (13,)
+        Returns
+        -------
+        x_normalized : jnp.ndarray
+            Normalized state with ||q|| = 1, shape (13,)
+
+        Examples
+        --------
+        >>> twin = QuadrotorTwin()
+        >>> x = jnp.zeros(13)
+        >>> x = x.at[6:10].set(jnp.array([0.7, 0.7, 0.0, 0.0]))  # Non-unit quaternion
+        >>> x_norm = twin.normalize_state(x)
+        >>> print(jnp.linalg.norm(x_norm[6:10]))  # Should be 1.0
         """
         q = x[6:10]
         q_norm = q / jnp.linalg.norm(q)
@@ -207,12 +269,26 @@ class QuadrotorTwin(TwinModel):
         Uses Euclidean distance for position/velocity/angular velocity
         and geodesic distance for quaternion.
 
-        Args:
-            x1: First state (13,)
-            x2: Second state (13,)
+        Parameters
+        ----------
+        x1 : jnp.ndarray
+            First state, shape (13,)
+        x2 : jnp.ndarray
+            Second state, shape (13,)
 
-        Returns:
+        Returns
+        -------
+        distance : float
             Weighted distance between states
+
+        Examples
+        --------
+        >>> twin = QuadrotorTwin()
+        >>> x1 = jnp.zeros(13)
+        >>> x1 = x1.at[6].set(1.0)  # Identity quaternion
+        >>> x2 = jnp.array([1.0, 1.0, -1.0] + [0]*10)
+        >>> x2 = x2.at[6].set(1.0)
+        >>> dist = twin.state_distance(x1, x2)
         """
         # Position and velocity distance
         pos_diff = jnp.linalg.norm(x1[0:3] - x2[0:3])
@@ -228,17 +304,32 @@ class QuadrotorTwin(TwinModel):
         omega_diff = jnp.linalg.norm(x1[10:13] - x2[10:13])
 
         # Weighted combination
-        return jnp.sqrt(pos_diff**2 + vel_diff**2 + q_dist**2 + omega_diff**2)
+        return float(jnp.sqrt(pos_diff**2 + vel_diff**2 + q_dist**2 + omega_diff**2))
 
     def quaternion_to_euler(self, q: jnp.ndarray) -> Tuple[float, float, float]:
         """
         Convert quaternion to Euler angles (roll, pitch, yaw).
 
-        Args:
-            q: Quaternion [qw, qx, qy, qz] (4,)
+        Parameters
+        ----------
+        q : jnp.ndarray
+            Quaternion [qw, qx, qy, qz], shape (4,)
 
-        Returns:
-            (roll, pitch, yaw) in radians
+        Returns
+        -------
+        roll : float
+            Roll angle (radians)
+        pitch : float
+            Pitch angle (radians)
+        yaw : float
+            Yaw angle (radians)
+
+        Examples
+        --------
+        >>> twin = QuadrotorTwin()
+        >>> q = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity
+        >>> roll, pitch, yaw = twin.quaternion_to_euler(q)
+        >>> print(roll, pitch, yaw)  # Should be ~0, 0, 0
         """
         qw, qx, qy, qz = q[0], q[1], q[2], q[3]
 
@@ -251,20 +342,32 @@ class QuadrotorTwin(TwinModel):
         # Yaw (z-axis rotation)
         yaw = jnp.arctan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy**2 + qz**2))
 
-        return roll, pitch, yaw
+        return float(roll), float(pitch), float(yaw)
 
     @staticmethod
     def euler_to_quaternion(roll: float, pitch: float, yaw: float) -> jnp.ndarray:
         """
         Convert Euler angles to quaternion.
 
-        Args:
-            roll: Roll angle (radians)
-            pitch: Pitch angle (radians)
-            yaw: Yaw angle (radians)
+        Parameters
+        ----------
+        roll : float
+            Roll angle (radians)
+        pitch : float
+            Pitch angle (radians)
+        yaw : float
+            Yaw angle (radians)
 
-        Returns:
-            Quaternion [qw, qx, qy, qz] (4,)
+        Returns
+        -------
+        q : jnp.ndarray
+            Quaternion [qw, qx, qy, qz], shape (4,)
+
+        Examples
+        --------
+        >>> from ddfs.models.quadrotor import QuadrotorTwin
+        >>> q = QuadrotorTwin.euler_to_quaternion(0.0, 0.0, 0.0)
+        >>> print(q)  # Should be [1, 0, 0, 0]
         """
         cy = jnp.cos(yaw * 0.5)
         sy = jnp.sin(yaw * 0.5)
@@ -281,161 +384,38 @@ class QuadrotorTwin(TwinModel):
         return jnp.array([qw, qx, qy, qz])
 
     def __repr__(self) -> str:
+        """String representation."""
         return f"QuadrotorTwin(m={self.m:.4f}kg, state_dim={self.state_dim}, input_dim={self.input_dim}, dt={self.dt})"
 
 
-class QuadrotorConstraints:
+def create_quadrotor_example() -> dict:
     """
-    State and input constraints for quadrotor.
+    Create example quadrotor configuration matching specifications.
 
-    Typical constraints:
-        - Position: p ∈ [p_min, p_max]
-        - Velocity: ||v|| ≤ v_max
-        - Angular velocity: ||ω|| ≤ ω_max
-        - Thrust: T ∈ [T_min, T_max]
-        - Torques: ||τ|| ≤ τ_max
-    """
-
-    def __init__(
-        self,
-        x_min: float = -5.0,
-        x_max: float = 10.0,
-        y_min: float = -5.0,
-        y_max: float = 10.0,
-        z_min: float = -5.0,
-        z_max: float = 0.5,
-        v_max: float = 5.0,
-        omega_max: float = 5.0,
-        T_min: float = 0.0,
-        T_max: float = 1.0,
-        tau_max: float = 0.1,
-    ):
-        """
-        Initialize quadrotor constraints.
-
-        Args:
-            x_min, x_max: Position bounds in x (m)
-            y_min, y_max: Position bounds in y (m)
-            z_min, z_max: Position bounds in z (m) (NED: negative is up)
-            v_max: Maximum velocity magnitude (m/s)
-            omega_max: Maximum angular velocity magnitude (rad/s)
-            T_min, T_max: Thrust bounds (N)
-            tau_max: Maximum torque magnitude (N⋅m)
-        """
-        # State bounds (13D: [p, v, q, ω])
-        # Note: quaternion is always normalized, so no explicit bounds
-        self.p_min = jnp.array([x_min, y_min, z_min])
-        self.p_max = jnp.array([x_max, y_max, z_max])
-        self.v_max = v_max
-        self.omega_max = omega_max
-
-        # Input bounds (4D: [T, τx, τy, τz])
-        self.u_min = jnp.array([T_min, -tau_max, -tau_max, -tau_max])
-        self.u_max = jnp.array([T_max, tau_max, tau_max, tau_max])
-
-    def check_state(self, x: jnp.ndarray) -> bool:
-        """
-        Check if state satisfies constraints.
-
-        Args:
-            x: State [p, v, q, ω] (13,)
-
-        Returns:
-            True if state is within bounds
-        """
-        pos = x[0:3]
-        vel = x[3:6]
-        omega = x[10:13]
-
-        pos_ok = jnp.all(pos >= self.p_min) and jnp.all(pos <= self.p_max)
-        vel_ok = jnp.linalg.norm(vel) <= self.v_max
-        omega_ok = jnp.linalg.norm(omega) <= self.omega_max
-
-        return pos_ok and vel_ok and omega_ok
-
-    def check_input(self, u: jnp.ndarray) -> bool:
-        """
-        Check if input satisfies constraints.
-
-        Args:
-            u: Input [T, τx, τy, τz] (4,)
-
-        Returns:
-            True if input is within bounds
-        """
-        return jnp.all(u >= self.u_min) and jnp.all(u <= self.u_max)
-
-    def clip_input(self, u: jnp.ndarray) -> jnp.ndarray:
-        """
-        Clip input to satisfy constraints.
-
-        Args:
-            u: Input [T, τx, τy, τz] (4,)
-
-        Returns:
-            Clipped input (4,)
-        """
-        return jnp.clip(u, self.u_min, self.u_max)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert constraints to dictionary format."""
-        return {
-            "state_bounds": {
-                "x_min": float(self.p_min[0]),
-                "x_max": float(self.p_max[0]),
-                "y_min": float(self.p_min[1]),
-                "y_max": float(self.p_max[1]),
-                "z_min": float(self.p_min[2]),
-                "z_max": float(self.p_max[2]),
-                "v_max": float(self.v_max),
-                "omega_max": float(self.omega_max),
-            },
-            "input_bounds": {
-                "T_min": float(self.u_min[0]),
-                "T_max": float(self.u_max[0]),
-                "tau_max": float(self.u_max[1]),
-            },
-        }
-
-    @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "QuadrotorConstraints":
-        """Create constraints from configuration dictionary."""
-        state_bounds = config.get("state_bounds", {})
-        input_bounds = config.get("input_bounds", {})
-
-        return cls(
-            x_min=state_bounds.get("x_min", -5.0),
-            x_max=state_bounds.get("x_max", 10.0),
-            y_min=state_bounds.get("y_min", -5.0),
-            y_max=state_bounds.get("y_max", 10.0),
-            z_min=state_bounds.get("z_min", -5.0),
-            z_max=state_bounds.get("z_max", 0.5),
-            v_max=state_bounds.get("v_max", 5.0),
-            omega_max=state_bounds.get("omega_max", 5.0),
-            T_min=input_bounds.get("T_min", 0.0),
-            T_max=input_bounds.get("T_max", 1.0),
-            tau_max=input_bounds.get("tau_max", 0.1),
-        )
-
-
-def create_quadrotor_example() -> Dict[str, Any]:
-    """
-    Create example quadrotor configuration matching your specifications.
-
-    Based on:
+    Based on typical quadrotor problem:
         n = 13, m = 4
         m = 0.0293 kg
         J = diag([1.8203e-5, 1.8186e-5, 3.4484e-5]) * 100
         g = 9.81
-        tf = 4, T = 51, dt = tf/T
+        tf = 4.0 seconds
+        N = 51 timesteps
+        dt = tf/N ≈ 0.078 seconds
         x_0 = [1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
         x_des = [5, 5, -4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
-        num_obs = 2
-        obs = [[2, 2, -1.5], [4, 4, -3.5]]
-        obs_r = 0.5
+        workspace: x ∈ [0, 8], y ∈ [0, 8], z ∈ [-5, 0.5]
+        obstacles: 2 spheres at [2, 2, -1.5] and [4, 4, -3.5], radius 0.5
 
-    Returns:
-        Configuration dictionary
+    Returns
+    -------
+    config : dict
+        Configuration dictionary with system, planning, constraints, and obstacles
+
+    Examples
+    --------
+    >>> from ddfs.models.quadrotor import create_quadrotor_example
+    >>> config = create_quadrotor_example()
+    >>> print(config['system']['mass'])
+    0.0293
     """
     return {
         "system": {
@@ -444,7 +424,7 @@ def create_quadrotor_example() -> Dict[str, Any]:
             "input_dim": 4,
             "dt": 4.0 / 51,  # ≈ 0.078 seconds
             "mass": 0.0293,
-            "inertia": [1.8203e-3, 1.8186e-3, 3.4484e-3],  # scaled by 100
+            "inertia": [1.8203e-3, 1.8186e-3, 3.4484e-3],  # Scaled by 100
             "gravity": 9.81,
         },
         "planning": {
@@ -464,16 +444,37 @@ def create_quadrotor_example() -> Dict[str, Any]:
                 "v_max": 5.0,
                 "omega_max": 5.0,
             },
-            "input_bounds": {"T_min": 0.0, "T_max": 1.0, "tau_max": 0.1},
+            "input_bounds": {
+                "T_min": 0.0,
+                "T_max": 1.0,
+                "tau_x_min": -0.1,
+                "tau_x_max": 0.1,
+                "tau_y_min": -0.1,
+                "tau_y_max": 0.1,
+                "tau_z_min": -0.1,
+                "tau_z_max": 0.1,
+            },
         },
         "obstacles": [
-            {"id": "obs_1", "type": "sphere", "center": [2.0, 2.0, -1.5], "radius": 0.5},
-            {"id": "obs_2", "type": "sphere", "center": [4.0, 4.0, -3.5], "radius": 0.5},
+            {
+                "id": "obs_1",
+                "type": "sphere",
+                "center": [2.0, 2.0, -1.5],
+                "radius": 0.5,
+                "safety_margin": 0.2,
+            },
+            {
+                "id": "obs_2",
+                "type": "sphere",
+                "center": [4.0, 4.0, -3.5],
+                "radius": 0.5,
+                "safety_margin": 0.2,
+            },
         ],
         "plant_mismatch": {
-            "mass_scale": 0.98,
-            "inertia_scale": 1.02,
-            "drag_coefficient": 0.01,
-            "thrust_efficiency": 0.95,
+            "mass_scale": 0.98,  # Plant is 2% lighter
+            "inertia_scale": 1.02,  # Inertia is 2% higher
+            "drag_coefficient": 0.01,  # Aerodynamic drag
+            "thrust_efficiency": 0.95,  # 5% thrust loss
         },
     }
