@@ -126,7 +126,7 @@ class SCvxPlanner:
         # Logging
         self.logger = logging.getLogger(__name__)
 
-    def plan(  # noqa: C901
+    def plan(  # noqa: C901, PLR0915, PLR0912
         self,
         x0: np.ndarray,
         xf: np.ndarray,
@@ -183,6 +183,9 @@ class SCvxPlanner:
         x_sol = x_guess.copy()
         u_sol = u_guess.copy()
 
+        # Adaptive trust region: start large, shrink as we converge
+        current_trust_region = self.trust_region * 3.0  # Start 3x larger
+
         for iteration in range(self.max_iterations):
             if self.verbose:
                 self.logger.info(f"\nIteration {iteration + 1}/{self.max_iterations}")
@@ -190,10 +193,22 @@ class SCvxPlanner:
             # Linearize dynamics around current trajectory
             A_list, B_list, c_list = self._linearize_trajectory(x_sol, u_sol, dt)
 
-            # Solve convex subproblem
-            x_new, u_new, cost = self._solve_convex_subproblem(
-                x0, xf, N, n, m, dt, x_sol, u_sol, A_list, B_list, c_list
-            )
+            # Solve convex subproblem with current trust region
+            try:
+                x_new, u_new, cost = self._solve_convex_subproblem(
+                    x0, xf, N, n, m, dt, x_sol, u_sol, A_list, B_list, c_list, trust_region=current_trust_region
+                )
+            except RuntimeError as e:
+                # If infeasible, try with larger trust region
+                if "infeasible" in str(e).lower() and current_trust_region < self.trust_region * 10.0:
+                    current_trust_region *= 1.5
+                    if self.verbose:
+                        self.logger.warning(f"  Infeasible, increasing trust region to {current_trust_region:.2f}")
+                    x_new, u_new, cost = self._solve_convex_subproblem(
+                        x0, xf, N, n, m, dt, x_sol, u_sol, A_list, B_list, c_list, trust_region=current_trust_region
+                    )
+                else:
+                    raise
 
             # Check convergence
             delta_x = np.linalg.norm(x_new - x_sol)
@@ -212,6 +227,10 @@ class SCvxPlanner:
                 if self.verbose:
                     self.logger.info(f"\n✓ Converged in {iteration + 1} iterations")
                 break
+
+            # Shrink trust region if making good progress
+            if delta_x < self.trust_region * 0.5 and delta_u < self.trust_region * 0.5:
+                current_trust_region = max(self.trust_region, current_trust_region * 0.8)
         else:
             if self.verbose:
                 self.logger.warning(f"\n⚠ Did not converge in {self.max_iterations} iterations")
@@ -312,7 +331,7 @@ class SCvxPlanner:
 
         return A_list, B_list, c_list
 
-    def _solve_convex_subproblem(  # noqa: C901
+    def _solve_convex_subproblem(  # noqa: C901, PLR0912, PLR0915
         self,
         x0: np.ndarray,
         xf: np.ndarray,
@@ -325,6 +344,7 @@ class SCvxPlanner:
         A_list: List[np.ndarray],
         B_list: List[np.ndarray],
         c_list: List[np.ndarray],
+        trust_region: Optional[float] = None,
     ) -> tuple[np.ndarray, np.ndarray, float]:
         """
         Solve convex subproblem with linearized dynamics.
@@ -379,13 +399,24 @@ class SCvxPlanner:
         # Terminal condition (with slack)
         constraints.append(cp.norm(x[N] - xf, "inf") <= nu[N])
 
+        # State constraints (workspace bounds)
+        if hasattr(self.constraints, "x_min") and hasattr(self.constraints, "x_max"):
+            # Convert JAX arrays to numpy for CVXPY
+            x_min = np.array(self.constraints.x_min)
+            x_max = np.array(self.constraints.x_max)
+            for k in range(N + 1):
+                constraints.append(x[k] >= x_min)
+                constraints.append(x[k] <= x_max)
+
         # Input constraints
         for k in range(N):
-            u_clipped = self.constraints.clip_input(u_ref[k])  # noqa: F841
             # Simple box constraints (system-specific)
             if hasattr(self.constraints, "u_min") and hasattr(self.constraints, "u_max"):
-                constraints.append(u[k] >= self.constraints.u_min)
-                constraints.append(u[k] <= self.constraints.u_max)
+                # Convert JAX arrays to numpy for CVXPY
+                u_min = np.array(self.constraints.u_min)
+                u_max = np.array(self.constraints.u_max)
+                constraints.append(u[k] >= u_min)
+                constraints.append(u[k] <= u_max)
 
         # Obstacle avoidance (linearized)
         for k in range(N + 1):
@@ -404,25 +435,67 @@ class SCvxPlanner:
                     b = obs.effective_radius - dist
 
                     # Linearized constraint with slack
+                    # If reference is inside obstacle (b > 0), allow slack to escape
                     constraints.append(a @ x[k, :pos_dim] >= a @ pos_ref + b - nu[k])
+                else:
+                    # If reference is exactly at center, push away in arbitrary direction
+                    # Use [1, 0] for 2D or [1, 0, 0] for 3D
+                    a = np.zeros(pos_dim)
+                    a[0] = 1.0
+                    b = obs.effective_radius
+                    constraints.append(a @ x[k, :pos_dim] >= a @ obs.center + b - nu[k])
 
         # Trust region (limit deviation from reference)
+        # Use provided trust region or default
+        tr = trust_region if trust_region is not None else self.trust_region
+
+        # Use larger trust region for states to allow obstacle avoidance
+        # Scale trust region based on workspace size for states
+        if hasattr(self.constraints, "x_max") and hasattr(self.constraints, "x_min"):
+            x_max = np.array(self.constraints.x_max)
+            x_min = np.array(self.constraints.x_min)
+            workspace_size = np.max(x_max - x_min)
+            state_trust_region = max(tr, workspace_size * 0.1)  # At least 10% of workspace
+        else:
+            state_trust_region = tr * 2.0  # Larger for states
+
         for k in range(N + 1):
-            constraints.append(cp.norm(x[k] - x_ref[k]) <= self.trust_region)
+            constraints.append(cp.norm(x[k] - x_ref[k]) <= state_trust_region)
         for k in range(N):
-            constraints.append(cp.norm(u[k] - u_ref[k]) <= self.trust_region)
+            constraints.append(cp.norm(u[k] - u_ref[k]) <= tr)
 
         # Non-negativity of virtual control
         constraints.append(nu >= 0)
 
-        # Solve
+        # Solve - try multiple solvers
         problem = cp.Problem(cp.Minimize(cost), constraints)
-        problem.solve(solver=cp.ECOS, verbose=False)
 
-        if problem.status not in ["optimal", "optimal_inaccurate"]:
-            raise RuntimeError(f"Optimization failed with status: {problem.status}")
+        # Try ECOS first (fastest)
+        try:
+            problem.solve(solver=cp.ECOS, verbose=False, max_iters=1000)
+            if problem.status in ["optimal", "optimal_inaccurate"]:
+                return x.value, u.value, problem.value
+        except Exception:
+            pass
 
-        return x.value, u.value, problem.value
+        # Try SCS if ECOS fails
+        try:
+            problem.solve(solver=cp.SCS, verbose=False, max_iters=1000)
+            if problem.status in ["optimal", "optimal_inaccurate"]:
+                return x.value, u.value, problem.value
+        except Exception:
+            pass
+
+        # Try OSQP as last resort
+        try:
+            problem.solve(solver=cp.OSQP, verbose=False, max_iters=10000)
+            if problem.status in ["optimal", "optimal_inaccurate"]:
+                return x.value, u.value, problem.value
+        except Exception:
+            pass
+
+        # If all solvers fail, raise error
+        raise RuntimeError(f"Optimization failed with status: {problem.status}")
 
     def _check_obstacle_violations(self, x_traj: np.ndarray) -> List[str]:
         """

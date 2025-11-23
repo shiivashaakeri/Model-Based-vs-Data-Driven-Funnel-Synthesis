@@ -1,0 +1,34 @@
+DDFS PIPELINE - STEP 1 SETUP SUMMARY
+================================================================================
+
+System Type: unicycle
+State Dimension: 3
+Input Dimension: 2
+Timestep: 0.131148 seconds
+
+Digital Twin:
+  UnicycleTwin(state_dim=3, input_dim=2, dt=0.13114754098360656)
+
+Plant Model:
+  UnicyclePlant(velocity_scale=0.950, angular_scale=1.030, slip_coefficient=0.0200)
+  Mismatch parameters:
+    velocity_scale: 0.95
+    angular_scale: 1.03
+    slip_coefficient: 0.02
+
+Workspace:
+  Workspace2D(x=[0.00, 12.00], y=[0.00, 8.00], area=96.00)
+  Bounds: (0.0, 12.0, 0.0, 8.0)
+  Area: 96.00
+
+Obstacles (2):
+  [0] CircleObstacle(id='obs_1', center=[4. 3.], radius=1.00, margin=0.25)
+  [1] CircleObstacle(id='obs_2', center=[8. 3.], radius=1.00, margin=0.25)
+
+Constraints:
+  UnicycleConstraints(x∈[0.0, 12.0], y∈[0.0, 8.0], v∈[0.0, 2.0], ω∈[-2.0, 2.0])
+
+Verification:
+  Twin step: OK
+  Plant step: OK
+  Plant-twin mismatch: 3.100002e-02
