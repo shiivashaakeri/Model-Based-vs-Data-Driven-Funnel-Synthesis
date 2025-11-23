@@ -374,16 +374,16 @@ class EllipsoidSolver:
         Returns:
             Constraint or None if obstacle type not supported
         """
-        from core.obstacles import CircularObstacle, EllipsoidalObstacle  # noqa: PLC0415
+        from ddfs.core.obstacles import CircleObstacle, SphereObstacle  # noqa: PLC0415
 
-        if isinstance(obstacle, CircularObstacle):
+        if isinstance(obstacle, CircleObstacle):
             # Extract x-y components (assume first 2 dimensions)
             c_xy = c[:2]
             P_xy = P[:2, :2]
 
             # Obstacle center and radius
-            obs_center = np.array([obstacle.x, obstacle.y])
-            obs_radius = obstacle.radius
+            obs_center = obstacle.center[:2]
+            obs_radius = obstacle.effective_radius
 
             # Distance from ellipsoid center to obstacle
             dist = cp.norm(c_xy - obs_center, 2)
@@ -394,19 +394,19 @@ class EllipsoidSolver:
             # Constraint: distance >= obstacle_radius + beta + ellipsoid_reach
             return dist >= obs_radius + beta + ellipsoid_reach
 
-        elif isinstance(obstacle, EllipsoidalObstacle):
+        elif isinstance(obstacle, SphereObstacle):
             # More complex constraint - for now, use conservative approximation
-            # Approximate as circular obstacle with radius = max semiaxis
-            max_semiaxis = np.max(np.sqrt(np.diag(obstacle.Q)))
+            # Approximate as circular obstacle with radius = effective radius
+            obs_radius = obstacle.effective_radius
 
             c_xy = c[:2]
             P_xy = P[:2, :2]
-            obs_center = np.array([obstacle.x, obstacle.y])
+            obs_center = obstacle.center[:2]
 
             dist = cp.norm(c_xy - obs_center, 2)
             ellipsoid_reach = cp.norm(cp.sqrt(P_xy), 2)
 
-            return dist >= max_semiaxis + beta + ellipsoid_reach
+            return dist >= obs_radius + beta + ellipsoid_reach
 
         else:
             logger.warning(f"Obstacle type {type(obstacle).__name__} not supported, skipping")
