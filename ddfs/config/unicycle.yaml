@@ -1,0 +1,82 @@
+# =============================================================================
+# Unicycle System Configuration
+# =============================================================================
+# Unicycle (differential-drive robot) model with 3 states and 2 inputs.
+#
+# State: x = [px, py, theta]^T
+#   - px: x-position [m]
+#   - py: y-position [m]
+#   - theta: heading angle [rad]
+#
+# Input: u = [v, omega]^T
+#   - v: linear velocity [m/s]
+#   - omega: angular velocity [rad/s]
+#
+# Continuous dynamics (twin):
+#   px_dot = v * cos(theta)
+#   py_dot = v * sin(theta)
+#   theta_dot = omega
+
+config_name: "unicycle"
+output_dir: "results/unicycle"
+
+# -----------------------------------------------------------------------------
+# System Configuration
+# -----------------------------------------------------------------------------
+system:
+  name: "unicycle"
+  n_states: 3
+  n_inputs: 2
+
+  state_labels: ["px", "py", "theta"]
+  input_labels: ["v", "omega"]
+
+  # Initial and final conditions
+  x_init: [1.0, 1.0, 0.0]
+  x_final: [10.0, 5.5, 0.0]
+
+  # State and input bounds
+  bounds:
+    # State bounds: [px, py, theta]
+    x_min: [-1.0, -1.0, -3.14159]
+    x_max: [15.0, 10.0, 3.14159]
+    # Input bounds: [v, omega]
+    u_min: [-2.0, -2.0]
+    u_max: [2.0, 2.0]
+
+  # Physical parameters (twin model)
+  params:
+    # No additional parameters for basic unicycle
+    # Wheelbase, mass, etc. can be added here for extended models
+    wheelbase: 0.5  # [m] - for reference/visualization
+
+  # Obstacles (circular)
+  obstacles:
+    - center: [4.0, 3.0]
+      radius: 1.0
+    - center: [8.0, 3.0]
+      radius: 1.0
+
+  # Plant-Twin mismatch parameters
+  # The plant will have perturbed dynamics compared to the twin
+  mismatch:
+    # Type 1: Additive velocity scaling
+    velocity_scale: 1.05      # Plant has 5% higher effective velocity
+    # Type 2: Heading bias
+    heading_bias: 0.02        # Small constant bias in heading rate [rad/s]
+    # Type 3: Slip effect
+    lateral_slip: 0.03        # Lateral slip coefficient
+    # Uniform bound gamma (to be computed/estimated)
+    gamma: 0.05               # Uniform mismatch bound
+
+# -----------------------------------------------------------------------------
+# System-Specific Solver Tuning (optional overrides)
+# -----------------------------------------------------------------------------
+solver:
+  scvx_max_iters: 30    # Unicycle typically converges faster
+
+# -----------------------------------------------------------------------------
+# System-Specific Lipschitz Parameters
+# -----------------------------------------------------------------------------
+lipschitz:
+  n_samples: 500        # Fewer samples needed for simpler dynamics
