@@ -94,8 +94,8 @@ system:
 # ==============================================================================
 planning:
   unicycle:
-    tf: 8.0        # Final time (seconds)
-    N: 61          # Planning horizon (number of control intervals)
+    tf: 65.57      # Final time (seconds) - computed from N * dt
+    N: 500         # Planning horizon (number of control intervals) - set for ~5 segments
     x0: [1.0, 1.0, 0.0]           # Initial state
     xf: [10.0, 5.5, 0.0]          # Goal state
     
@@ -108,7 +108,9 @@ planning:
     # Cost weights
     weight_state: 1.0
     weight_input: 0.1
+    weight_input_smooth: 1.0  # Penalty on input changes (higher = smoother inputs)
     weight_virtual: 1000.0
+    state_cost_type: "terminal"  # "terminal" = only penalize final state (smoother), "all" = penalize all states (faster)
   
   quadrotor:
     tf: 4.0        # Final time (seconds)

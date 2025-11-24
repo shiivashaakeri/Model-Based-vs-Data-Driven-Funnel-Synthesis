@@ -226,8 +226,8 @@ def plot_collected_trajectories(
 
     # Plot collected trajectories
     for i, traj in enumerate(traj_to_plot):
-        x_traj = traj.x_traj[:, 0]
-        y_traj = traj.x_traj[:, 1]
+        x_traj = traj.x[:, 0]
+        y_traj = traj.x[:, 1]
 
         ax.plot(
             x_traj,

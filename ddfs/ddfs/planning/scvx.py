@@ -121,7 +121,9 @@ class SCvxPlanner:
         self.verbose = self.config.get("verbose", True)
         self.weight_state = self.config.get("weight_state", 1.0)
         self.weight_input = self.config.get("weight_input", 0.1)
+        self.weight_input_smooth = self.config.get("weight_input_smooth", 1.0)  # Penalty on input changes
         self.weight_virtual = self.config.get("weight_virtual", 1000.0)
+        self.state_cost_type = self.config.get("state_cost_type", "terminal")  # "all" or "terminal"
 
         # Logging
         self.logger = logging.getLogger(__name__)
@@ -378,13 +380,29 @@ class SCvxPlanner:
         u = cp.Variable((N, m))
         nu = cp.Variable(N + 1)  # Virtual control for feasibility
 
-        # Cost function: minimize deviation + input effort + virtual control penalty
+        # Cost function: minimize deviation + input effort + input smoothness + virtual control penalty
         cost = 0
+        
+        # State cost: either penalize all states or only terminal state
+        if self.state_cost_type == "terminal":
+            # Only penalize terminal state (allows gradual convergence)
+            cost += self.weight_state * cp.sum_squares(x[N] - xf)
+        else:
+            # Penalize all states (original behavior - fast convergence)
+            for k in range(N + 1):
+                cost += self.weight_state * cp.sum_squares(x[k] - xf)
+        
+        # Virtual control penalty (for feasibility)
         for k in range(N + 1):
-            cost += self.weight_state * cp.sum_squares(x[k] - xf)
             cost += self.weight_virtual * nu[k]
+        
+        # Input effort penalty
         for k in range(N):
             cost += self.weight_input * cp.sum_squares(u[k])
+        
+        # Input smoothness penalty: penalize changes in input (u[k+1] - u[k])
+        for k in range(N - 1):
+            cost += self.weight_input_smooth * cp.sum_squares(u[k + 1] - u[k])
 
         # Constraints
         constraints = []

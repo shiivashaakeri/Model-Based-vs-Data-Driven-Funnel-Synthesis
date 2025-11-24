@@ -4,12 +4,11 @@ This module provides system-agnostic plotting functions that work for
 any vehicle type (unicycle, quadrotor, etc.). These utilities handle
 common visualization tasks like trajectories, controls, and ellipsoids.
 
-The functions in this module are dimension-flexible and make no assumptions
-about the specific system being visualized.
+IMPORTANT: All ellipsoid functions now work with P-based EllipsoidParams
+where E(P) = {η | η^T P η ≤ 1}. Larger P means smaller ellipsoid.
 """
 
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -50,22 +49,7 @@ def setup_figure(
     dpi: int = 100,
     style: Optional[Dict] = None,
 ) -> Tuple[plt.Figure, plt.Axes]:
-    """Setup figure with consistent DDFS styling.
-
-    Args:
-        figsize: Figure size (width, height) in inches
-        dpi: Dots per inch for figure resolution
-        style: Optional style overrides (updates FIGURE_STYLE)
-
-    Returns:
-        fig: Matplotlib figure
-        ax: Matplotlib axes
-
-    Examples:
-        >>> fig, ax = setup_figure(figsize=(12, 8))
-        >>> ax.plot([0, 1], [0, 1])
-    """
-    # Apply style
+    """Setup figure with consistent DDFS styling."""
     plot_style = FIGURE_STYLE.copy()
     if style:
         plot_style.update(style)
@@ -77,610 +61,623 @@ def setup_figure(
     return fig, ax
 
 
-def setup_figure_3d(
-    figsize: Tuple[float, float] = (10, 8),
-    dpi: int = 100,
-    style: Optional[Dict] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
-    """Setup 3D figure with consistent DDFS styling.
-
-    Args:
-        figsize: Figure size (width, height) in inches
-        dpi: Dots per inch for figure resolution
-        style: Optional style overrides
-
-    Returns:
-        fig: Matplotlib figure
-        ax: Matplotlib 3D axes
-
-    Examples:
-        >>> fig, ax = setup_figure_3d()
-        >>> ax.plot([0, 1], [0, 1], [0, 1])
-    """
-    # Apply style
-    plot_style = FIGURE_STYLE.copy()
-    if style:
-        plot_style.update(style)
-
-    plt.style.use("seaborn-v0_8-darkgrid")
-    plt.rcParams.update(plot_style)
-
-    fig = plt.figure(figsize=figsize, dpi=dpi)
-    ax = fig.add_subplot(111, projection="3d")
-
-    return fig, ax
-
-
-def save_figure(
-    fig: plt.Figure,
-    path: Union[str, Path],
-    dpi: int = 300,
-    bbox_inches: str = "tight",
-    transparent: bool = False,
-) -> None:
-    """Save figure with consistent settings.
-
-    Args:
-        fig: Matplotlib figure to save
-        path: Output path (creates parent directories if needed)
-        dpi: Resolution for raster formats
-        bbox_inches: Bounding box setting ('tight' removes whitespace)
-        transparent: Use transparent background
-
-    Examples:
-        >>> fig, ax = setup_figure()
-        >>> ax.plot([0, 1], [0, 1])
-        >>> save_figure(fig, 'results/trajectory.png')
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    fig.savefig(
-        path,
-        dpi=dpi,
-        bbox_inches=bbox_inches,
-        transparent=transparent,
-    )
-    print(f"✓ Saved figure: {path}")
-
-
-# ==============================================================================
-# TRAJECTORY PLOTTING
-# ==============================================================================
-
-
-def plot_trajectory(
-    x_traj: np.ndarray,
-    ax: Optional[plt.Axes] = None,
-    label: str = "Trajectory",
-    color: Optional[str] = None,
-    alpha: float = 1.0,
-    linewidth: float = 2.0,
-    marker: Optional[str] = None,
-    markevery: Optional[int] = None,
-) -> plt.Axes:
-    """Plot generic trajectory (auto-detects 2D or 3D).
-
-    Args:
-        x_traj: State trajectory, shape (N, n) where n >= 2
-        ax: Matplotlib axes (creates new if None)
-        label: Legend label
-        color: Line color (uses default if None)
-        alpha: Transparency (0=invisible, 1=opaque)
-        linewidth: Line width
-        marker: Marker style (e.g., 'o', 'x', '^')
-        markevery: Show marker every N points
-
-    Returns:
-        ax: Matplotlib axes with trajectory plotted
-
-    Examples:
-        >>> x_traj = np.random.randn(100, 3)  # 100 timesteps, 3D state
-        >>> ax = plot_trajectory(x_traj, label='Random walk')
-    """
-    if ax is None:
-        if x_traj.shape[1] >= 3:
-            _, ax = setup_figure_3d()
-        else:
-            _, ax = setup_figure()
-
-    color = color or COLORS["nominal"]
-
-    # 2D trajectory (plot x vs y)
-    if x_traj.shape[1] == 2 or (x_traj.shape[1] > 2 and not hasattr(ax, "zaxis")):
-        ax.plot(
-            x_traj[:, 0],
-            x_traj[:, 1],
-            label=label,
-            color=color,
-            alpha=alpha,
-            linewidth=linewidth,
-            marker=marker,
-            markevery=markevery,
-        )
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-
-    # 3D trajectory
-    elif x_traj.shape[1] >= 3 and hasattr(ax, "zaxis"):
-        ax.plot(
-            x_traj[:, 0],
-            x_traj[:, 1],
-            x_traj[:, 2],
-            label=label,
-            color=color,
-            alpha=alpha,
-            linewidth=linewidth,
-            marker=marker,
-            markevery=markevery,
-        )
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        ax.set_zlabel("z")
-
-    return ax
-
-
-def plot_controls(
-    u_traj: np.ndarray,
-    time: Optional[np.ndarray] = None,
-    labels: Optional[List[str]] = None,
-    ax: Optional[plt.Axes] = None,
-    title: str = "Control Inputs",
-) -> plt.Axes:
-    """Plot control inputs over time.
-
-    Args:
-        u_traj: Control trajectory, shape (N, m)
-        time: Time vector, shape (N,). If None, uses indices
-        labels: Control labels (e.g., ['v', 'ω']). If None, uses u_0, u_1, ...
-        ax: Matplotlib axes (creates new if None)
-        title: Plot title
-
-    Returns:
-        ax: Matplotlib axes with controls plotted
-
-    Examples:
-        >>> u_traj = np.random.randn(100, 2)
-        >>> time = np.linspace(0, 10, 100)
-        >>> ax = plot_controls(u_traj, time, labels=['v', 'ω'])
-    """
-    if ax is None:
-        _, ax = setup_figure()
-
-    if time is None:
-        time = np.arange(u_traj.shape[0])
-
-    m = u_traj.shape[1]
-
-    if labels is None:
-        labels = [f"u_{i}" for i in range(m)]
-
-    for i in range(m):
-        ax.plot(time, u_traj[:, i], label=labels[i], linewidth=2)
-
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Control Input")
-    ax.set_title(title)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    return ax
-
-
-def plot_state_vs_time(
-    x_traj: np.ndarray,
-    time: Optional[np.ndarray] = None,
-    state_labels: Optional[List[str]] = None,
-    x_ref: Optional[np.ndarray] = None,
-    fig: Optional[plt.Figure] = None,
-    title: str = "State Evolution",
-) -> Tuple[plt.Figure, List[plt.Axes]]:
-    """Plot each state dimension vs time in subplots.
-
-    Args:
-        x_traj: State trajectory, shape (N, n)
-        time: Time vector, shape (N,). If None, uses indices
-        state_labels: State labels (e.g., ['x', 'y', 'θ'])
-        x_ref: Reference trajectory, shape (N, n). If provided, plots comparison
-        fig: Matplotlib figure (creates new if None)
-        title: Overall title
-
-    Returns:
-        fig: Matplotlib figure
-        axes: List of subplot axes
-
-    Examples:
-        >>> x_traj = np.random.randn(100, 3)
-        >>> fig, axes = plot_state_vs_time(x_traj, state_labels=['x', 'y', 'θ'])
-    """
-    n = x_traj.shape[1]
-
-    if time is None:
-        time = np.arange(x_traj.shape[0])
-
-    if state_labels is None:
-        state_labels = [f"x_{i}" for i in range(n)]
-
-    if fig is None:
-        fig = plt.figure(figsize=(12, 3 * n))
-
-    axes = []
-
-    for i in range(n):
-        ax = fig.add_subplot(n, 1, i + 1)
-
-        # Plot actual
-        ax.plot(time, x_traj[:, i], label="Actual", color=COLORS["actual"], linewidth=2)
-
-        # Plot reference if provided
-        if x_ref is not None:
-            ax.plot(
-                time, x_ref[:, i], label="Reference", color=COLORS["nominal"], linewidth=2, linestyle="--", alpha=0.7
-            )
-            ax.legend()
-
-        ax.set_ylabel(state_labels[i])
-        ax.grid(True, alpha=0.3)
-
-        if i == 0:
-            ax.set_title(title)
-        if i == n - 1:
-            ax.set_xlabel("Time (s)")
-
-        axes.append(ax)
-
-    fig.tight_layout()
-
-    return fig, axes
-
-
-# ==============================================================================
-# ELLIPSOID PLOTTING
-# ==============================================================================
-
-
-def plot_ellipsoid_2d(
+def plot_ellipse_from_P(
     P: np.ndarray,
-    c: np.ndarray,
+    center: np.ndarray,
     ax: plt.Axes,
     n_std: float = 1.0,
-    color: Optional[str] = None,
-    alpha: float = 0.3,
-    edgecolor: Optional[str] = None,
-    linewidth: float = 2,
-    label: Optional[str] = None,
-) -> plt.Axes:
-    """Plot 2D ellipsoid on existing axes.
-
-    Plots the ellipsoid {x | (x-c)^T P^{-1} (x-c) <= n_std^2}.
+    **kwargs,
+) -> Ellipse:
+    """Plot ellipse from P matrix where E(P) = {η | η^T P η ≤ 1}.
 
     Args:
-        P: Shape matrix (2x2, positive definite)
-        c: Center point (2,)
+        P: Shape matrix (positive definite), shape (2, 2) or larger
+        center: Ellipse center, shape (2,) or larger (uses first 2 dims)
         ax: Matplotlib axes
-        n_std: Number of standard deviations (radius multiplier)
-        color: Fill color
-        alpha: Fill transparency
-        edgecolor: Edge color
-        linewidth: Edge line width
-        label: Legend label
+        n_std: Scaling factor (1.0 means the boundary where η^T P η = 1)
+        **kwargs: Additional arguments for Ellipse patch
 
     Returns:
-        ax: Matplotlib axes with ellipsoid plotted
-
-    Examples:
-        >>> fig, ax = setup_figure()
-        >>> P = np.diag([1.0, 0.5])
-        >>> c = np.array([5.0, 3.0])
-        >>> plot_ellipsoid_2d(P, c, ax, label='Funnel')
+        ellipse: Matplotlib Ellipse patch
     """
-    # Extract 2D components if P is larger
+    # Extract 2D submatrix for x-y projection
     P_2d = P[:2, :2]
-    c_2d = c[:2]
+    center_2d = center[:2]
 
-    # Compute eigenvalues and eigenvectors
-    eigvals, eigvecs = np.linalg.eigh(P_2d)
+    # For E(P) = {η | η^T P η ≤ n_std^2}, we need the inverse for plotting
+    # The covariance matrix for plotting is Σ = (1/n_std^2) * P^{-1}
+    try:
+        P_inv = np.linalg.inv(P_2d)
+        Sigma = (1.0 / n_std**2) * P_inv
+    except np.linalg.LinAlgError:
+        # Fallback to identity if P is singular
+        Sigma = np.eye(2) * 0.01
 
-    # Compute ellipse parameters
-    # Semi-axes are sqrt(eigenvalues) * n_std
-    width = 2 * n_std * np.sqrt(eigvals[0])
-    height = 2 * n_std * np.sqrt(eigvals[1])
+    # Compute eigenvalues and eigenvectors of Sigma
+    eigvals, eigvecs = np.linalg.eigh(Sigma)
 
-    # Angle of rotation (in degrees)
+    # Ensure positive eigenvalues
+    eigvals = np.maximum(eigvals, 1e-10)
+
+    # Compute angle and width/height
     angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+    width = 2 * np.sqrt(eigvals[0])
+    height = 2 * np.sqrt(eigvals[1])
 
-    # Create ellipse
-    color = color or COLORS["funnel"]
-    edgecolor = edgecolor or color
-
+    # Create ellipse patch
     ellipse = Ellipse(
-        xy=c_2d,
+        xy=center_2d,
         width=width,
         height=height,
         angle=angle,
-        facecolor=color,
-        edgecolor=edgecolor,
-        alpha=alpha,
-        linewidth=linewidth,
-        label=label,
+        **kwargs,
     )
 
     ax.add_patch(ellipse)
+    return ellipse
 
-    return ax
 
-
-def plot_ellipsoid_3d(
-    P: np.ndarray,
-    c: np.ndarray,
-    ax: plt.Axes,
-    n_std: float = 1.0,
-    color: Optional[str] = None,
-    alpha: float = 0.3,
-    resolution: int = 20,
-    label: Optional[str] = None,
+def plot_ellipsoid_envelope_spatial(
+    nominal,
+    ellipsoids_dict,
+    workspace,
+    obstacles,
+    segmented_data,
+    ax: Optional[plt.Axes] = None,
+    sample_every: int = 3,
 ) -> plt.Axes:
-    """Plot 3D ellipsoid on existing axes.
+    """Plot spatial view of ellipsoid envelope with sampled segments.
 
-    Plots the ellipsoid {x | (x-c)^T P^{-1} (x-c) <= n_std^2}.
+    Shows the x-y projection of ellipsoids along the nominal trajectory.
 
     Args:
-        P: Shape matrix (3x3, positive definite)
-        c: Center point (3,)
-        ax: Matplotlib 3D axes
-        n_std: Number of standard deviations (radius multiplier)
-        color: Surface color
-        alpha: Surface transparency
-        resolution: Number of points for mesh
-        label: Legend label
+        nominal: NominalTrajectory object
+        ellipsoids_dict: Dict with 'P_0_list', 'P_min_0_list', 'P_min_0_init_list', 'envelope_list'
+        workspace: Workspace object
+        obstacles: List of Obstacle objects
+        segmented_data: SegmentedData with k_starts, k_ends
+        ax: Matplotlib axes (creates new if None)
+        sample_every: Show every Nth segment
 
     Returns:
-        ax: Matplotlib 3D axes with ellipsoid plotted
-
-    Examples:
-        >>> fig, ax = setup_figure_3d()
-        >>> P = np.diag([1.0, 0.5, 0.3])
-        >>> c = np.array([5.0, 3.0, -2.0])
-        >>> plot_ellipsoid_3d(P, c, ax, label='Funnel')
+        ax: Matplotlib axes with visualization
     """
-    # Extract 3D components if P is larger
-    P_3d = P[:3, :3]
-    c_3d = c[:3]
+    if ax is None:
+        _, ax = setup_figure(figsize=(14, 10))
 
-    # Create sphere
-    u = np.linspace(0, 2 * np.pi, resolution)
-    v = np.linspace(0, np.pi, resolution)
-    x_sphere = np.outer(np.cos(u), np.sin(v))
-    y_sphere = np.outer(np.sin(u), np.sin(v))
-    z_sphere = np.outer(np.ones_like(u), np.cos(v))
+    # Try to use envelope_list first (new format)
+    envelope_list = ellipsoids_dict.get("envelope_list", [])
 
-    # Stack into points
-    sphere_points = np.stack([x_sphere.ravel(), y_sphere.ravel(), z_sphere.ravel()], axis=0)
+    if envelope_list:
+        # New format: extract from FeasibilityEnvelope objects
+        P_0_list = [env.P_0 for env in envelope_list]
+        P_min_0_list = [env.P_min_segment for env in envelope_list]
+        P_min_0_init_list = [env.P_min_0_init for env in envelope_list]
+    else:
+        # Old format: extract directly from dict
+        P_0_list = ellipsoids_dict.get("P_0_list", [])
+        P_min_0_list = ellipsoids_dict.get("P_min_0_list", [])
+        P_min_0_init_list = ellipsoids_dict.get("P_min_0_init_list", [])
 
-    # Transform sphere to ellipsoid: x = c + sqrt(P) * sphere_point * n_std
-    try:
-        P_sqrt = np.linalg.cholesky(P_3d)
-    except np.linalg.LinAlgError:
-        # If Cholesky fails, use eigenvalue decomposition
-        eigvals, eigvecs = np.linalg.eigh(P_3d)
-        P_sqrt = eigvecs @ np.diag(np.sqrt(np.abs(eigvals))) @ eigvecs.T
+    if not P_0_list:
+        ax.text(0.5, 0.5, "No ellipsoid data", ha="center", va="center", transform=ax.transAxes)
+        return ax
 
-    ellipsoid_points = c_3d[:, None] + n_std * P_sqrt @ sphere_points
+    # Plot workspace boundary
+    if hasattr(workspace, "bounds"):
+        bounds = workspace.bounds
+        ax.plot(
+            [bounds[0], bounds[1], bounds[1], bounds[0], bounds[0]],
+            [bounds[2], bounds[2], bounds[3], bounds[3], bounds[2]],
+            color=COLORS["workspace"],
+            linewidth=2,
+            linestyle="--",
+            label="Workspace",
+            zorder=1,
+        )
 
-    # Reshape for plotting
-    x_ellipsoid = ellipsoid_points[0].reshape(resolution, resolution)
-    y_ellipsoid = ellipsoid_points[1].reshape(resolution, resolution)
-    z_ellipsoid = ellipsoid_points[2].reshape(resolution, resolution)
+    # Plot obstacles
+    for obs in obstacles:
+        if len(obs.center) >= 2:
+            circle = plt.Circle(
+                obs.center[:2],
+                obs.effective_radius,
+                color=COLORS["obstacle"],
+                alpha=0.3,
+                label="Obstacles" if obs == obstacles[0] else "",
+                zorder=2,
+            )
+            ax.add_patch(circle)
 
-    # Plot surface
-    color = color or COLORS["funnel"]
-
-    ax.plot_surface(
-        x_ellipsoid,
-        y_ellipsoid,
-        z_ellipsoid,
-        color=color,
-        alpha=alpha,
-        edgecolor="none",
-        label=label,
+    # Plot nominal trajectory
+    ax.plot(
+        nominal.x_nom[:, 0],
+        nominal.x_nom[:, 1],
+        color=COLORS["nominal"],
+        linewidth=2.5,
+        label="Nominal",
+        zorder=5,
     )
 
-    return ax
+    # Plot start and goal
+    ax.plot(
+        nominal.x_nom[0, 0],
+        nominal.x_nom[0, 1],
+        marker="o",
+        markersize=12,
+        color=COLORS["start"],
+        label="Start",
+        zorder=10,
+    )
+    ax.plot(
+        nominal.x_nom[-1, 0],
+        nominal.x_nom[-1, 1],
+        marker="*",
+        markersize=15,
+        color=COLORS["goal"],
+        label="Goal",
+        zorder=10,
+    )
 
+    # Plot sampled ellipsoids
+    sampled_indices = range(0, len(P_0_list), sample_every)
 
-# ==============================================================================
-# COMPARISON PLOTS
-# ==============================================================================
+    for idx in sampled_indices:
+        if idx >= len(P_0_list):
+            break
 
+        # Get segment start timestep
+        k_start = segmented_data.k_starts[idx] if idx < len(segmented_data.k_starts) else 0
+        center = nominal.x_nom[k_start]
 
-def plot_trajectory_comparison(
-    x_nom: np.ndarray,
-    x_actual: np.ndarray,
-    ax: Optional[plt.Axes] = None,
-    title: str = "Trajectory Comparison",
-) -> plt.Axes:
-    """Plot nominal vs actual trajectory comparison.
+        # Plot P_min_0_init (outermost, gray dashed)
+        if idx < len(P_min_0_init_list):
+            plot_ellipse_from_P(
+                P_min_0_init_list[idx].P,
+                center,
+                ax,
+                n_std=1.0,
+                facecolor="none",
+                edgecolor="gray",
+                linewidth=1.5,
+                linestyle="--",
+                alpha=0.5,
+                label="P_min_0_init" if idx == sampled_indices[0] else "",
+                zorder=3,
+            )
 
-    Args:
-        x_nom: Nominal trajectory, shape (N, n)
-        x_actual: Actual trajectory, shape (N, n)
-        ax: Matplotlib axes (creates new if None)
-        title: Plot title
+        # Plot P_min_0 (middle, blue)
+        if idx < len(P_min_0_list):
+            plot_ellipse_from_P(
+                P_min_0_list[idx].P,
+                center,
+                ax,
+                n_std=1.0,
+                facecolor=COLORS["nominal"],
+                edgecolor=COLORS["nominal"],
+                linewidth=2,
+                alpha=0.15,
+                label="P_min_0" if idx == sampled_indices[0] else "",
+                zorder=4,
+            )
 
-    Returns:
-        ax: Matplotlib axes with both trajectories
+        # Plot P_0 (innermost, orange)
+        if idx < len(P_0_list):
+            plot_ellipse_from_P(
+                P_0_list[idx].P,
+                center,
+                ax,
+                n_std=1.0,
+                facecolor=COLORS["funnel"],
+                edgecolor=COLORS["funnel"],
+                linewidth=2.5,
+                alpha=0.25,
+                label="P_0" if idx == sampled_indices[0] else "",
+                zorder=5,
+            )
 
-    Examples:
-        >>> x_nom = np.random.randn(100, 3)
-        >>> x_actual = x_nom + 0.1 * np.random.randn(100, 3)
-        >>> ax = plot_trajectory_comparison(x_nom, x_actual)
-    """
-    if ax is None:
-        if x_nom.shape[1] >= 3:
-            _, ax = setup_figure_3d()
-        else:
-            _, ax = setup_figure()
-
-    # Plot nominal
-    plot_trajectory(x_nom, ax=ax, label="Nominal", color=COLORS["nominal"], linewidth=2.5, alpha=0.8)
-
-    # Plot actual
-    plot_trajectory(x_actual, ax=ax, label="Actual", color=COLORS["actual"], linewidth=2, alpha=0.9)
-
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    title = f"Feasibility Envelope - Spatial View (showing {len(sampled_indices)}/{len(P_0_list)} segments)"
     ax.set_title(title)
-    ax.legend()
-
-    return ax
-
-
-def plot_tracking_error(
-    x_nom: np.ndarray,
-    x_actual: np.ndarray,
-    time: Optional[np.ndarray] = None,
-    ax: Optional[plt.Axes] = None,
-    title: str = "Tracking Error",
-) -> plt.Axes:
-    """Plot tracking error magnitude over time.
-
-    Args:
-        x_nom: Nominal trajectory, shape (N, n)
-        x_actual: Actual trajectory, shape (N, n)
-        time: Time vector, shape (N,). If None, uses indices
-        ax: Matplotlib axes (creates new if None)
-        title: Plot title
-
-    Returns:
-        ax: Matplotlib axes with error plot
-
-    Examples:
-        >>> x_nom = np.random.randn(100, 3)
-        >>> x_actual = x_nom + 0.1 * np.random.randn(100, 3)
-        >>> ax = plot_tracking_error(x_nom, x_actual)
-    """
-    if ax is None:
-        _, ax = setup_figure()
-
-    if time is None:
-        time = np.arange(x_nom.shape[0])
-
-    # Compute error norm
-    error = np.linalg.norm(x_actual - x_nom, axis=1)
-
-    ax.plot(time, error, color=COLORS["actual"], linewidth=2)
-    ax.fill_between(time, 0, error, alpha=0.3, color=COLORS["actual"])
-
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Error Magnitude")
-    ax.set_title(title)
+    ax.legend(loc="upper right")
     ax.grid(True, alpha=0.3)
-
-    # Add statistics
-    mean_error = np.mean(error)
-    max_error = np.max(error)
-    ax.axhline(mean_error, color="gray", linestyle="--", alpha=0.5, label=f"Mean: {mean_error:.3f}")
-    ax.text(
-        0.02,
-        0.98,
-        f"Max: {max_error:.3f}",
-        transform=ax.transAxes,
-        verticalalignment="top",
-        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8},
-    )
-
-    ax.legend()
+    ax.set_aspect("equal")
 
     return ax
 
 
-# ==============================================================================
-# UTILITY FUNCTIONS
-# ==============================================================================
+def plot_state_bounds_vs_time(
+    nominal,
+    ellipsoids_dict,
+    workspace,  # noqa: ARG001
+    obstacles,  # noqa: ARG001
+    time: Optional[np.ndarray] = None,
+    state_labels: Optional[List[str]] = None,
+    fig: Optional[plt.Figure] = None,
+) -> Tuple[plt.Figure, List[plt.Axes]]:
+    """Plot state bounds over time from feasibility envelopes.
+
+    Shows each state dimension separately with ellipsoid-derived bounds.
+
+    Args:
+        nominal: NominalTrajectory object
+        ellipsoids_dict: Dict with ellipsoid lists
+        workspace: Workspace object
+        obstacles: List of obstacles
+        time: Time vector for states (if None, uses dt from nominal)
+        state_labels: List of state labels (e.g., ['x', 'y', 'θ'])
+        fig: Matplotlib figure (creates new if None)
+
+    Returns:
+        fig: Matplotlib figure
+        axes: List of subplot axes (one per state dimension)
+    """
+    # Create time vector for states
+    if time is None:
+        time = np.arange(nominal.N + 1) * nominal.dt
+
+    # Extract ellipsoid lists
+    envelope_list = ellipsoids_dict.get("envelope_list", [])
+
+    if envelope_list:
+        P_0_list = [env.P_0 for env in envelope_list]
+        P_min_0_list = [env.P_min_segment for env in envelope_list]
+        P_min_0_init_list = [env.P_min_0_init for env in envelope_list]
+        segment_indices = ellipsoids_dict.get("segment_indices", [])
+    else:
+        P_0_list = ellipsoids_dict.get("P_0_list", [])
+        P_min_0_list = ellipsoids_dict.get("P_min_0_list", [])
+        P_min_0_init_list = ellipsoids_dict.get("P_min_0_init_list", [])
+        segment_indices = ellipsoids_dict.get("segment_indices", [])
+
+    # Get state dimension
+    n = nominal.state_dim
+
+    # Create subplots
+    if fig is None:
+        fig, axes = plt.subplots(n, 1, figsize=(14, 3 * n))
+        if n == 1:
+            axes = [axes]
+    else:
+        axes = fig.get_axes()
+
+    # Compute bounds for each state dimension
+    # For E(P) = {η | η^T P η ≤ 1}, the bound in dimension i is ±1/sqrt(P_ii)
+    def compute_bounds_from_P(P_list, segment_indices, N):
+        """Compute ± bounds from P matrices."""
+        upper = np.full((n, N + 1), np.nan)
+        lower = np.full((n, N + 1), np.nan)
+
+        for seg_idx, P_ell in enumerate(P_list):
+            if seg_idx >= len(segment_indices):
+                continue
+
+            if isinstance(segment_indices[seg_idx], (list, tuple)):
+                k_start = segment_indices[seg_idx][0]
+                k_end = segment_indices[seg_idx][1]
+            else:
+                k_start = seg_idx * 20
+                k_end = min(k_start + 20, N)
+
+            # Extract P matrix
+            P = P_ell.P if hasattr(P_ell, 'P') else P_ell
+            center = P_ell.c if hasattr(P_ell, 'c') else nominal.x_nom[k_start]
+
+            # For each dimension, bound is ±1/sqrt(P_ii)
+            for i in range(n):
+                if i < P.shape[0]:
+                    bound = 1.0 / np.sqrt(max(P[i, i], 1e-10))
+                    k_end_inclusive = k_end + 1
+                    upper[i, k_start:k_end_inclusive] = center[i] + bound
+                    lower[i, k_start:k_end_inclusive] = center[i] - bound
+
+        return upper, lower
+
+    # Compute bounds
+    bounds_P_0_upper, bounds_P_0_lower = compute_bounds_from_P(P_0_list, segment_indices, nominal.N)
+    bounds_P_min_0_upper, bounds_P_min_0_lower = compute_bounds_from_P(P_min_0_list, segment_indices, nominal.N)
+    bounds_P_min_0_init_upper, bounds_P_min_0_init_lower = compute_bounds_from_P(P_min_0_init_list, segment_indices, nominal.N)
+
+    # Plot each state dimension
+    for i in range(n):
+        ax = axes[i]
+
+        # Plot nominal state
+        ax.plot(
+            time,
+            nominal.x_nom[:, i],
+            color=COLORS["nominal"],
+            linewidth=2.5,
+            label="Nominal",
+            zorder=5,
+        )
+
+        # Plot P_0 bounds (orange shaded)
+        ax.fill_between(
+            time,
+            bounds_P_0_lower[i, :],
+            bounds_P_0_upper[i, :],
+            color=COLORS["funnel"],
+            alpha=0.3,
+            label="P_0 bounds",
+            zorder=1,
+        )
+
+        # Plot P_min_0 bounds (blue lines)
+        ax.plot(
+            time,
+            bounds_P_min_0_upper[i, :],
+            color=COLORS["nominal"],
+            linestyle="-",
+            linewidth=2,
+            alpha=0.7,
+            label="P_min_0 bounds" if i == 0 else "",
+            zorder=2,
+        )
+        ax.plot(
+            time,
+            bounds_P_min_0_lower[i, :],
+            color=COLORS["nominal"],
+            linestyle="-",
+            linewidth=2,
+            alpha=0.7,
+            zorder=2,
+        )
+
+        # Plot P_min_0_init bounds (gray dashed)
+        ax.plot(
+            time,
+            bounds_P_min_0_init_upper[i, :],
+            color="gray",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.6,
+            label="P_min_0_init" if i == 0 else "",
+            zorder=3,
+        )
+        ax.plot(
+            time,
+            bounds_P_min_0_init_lower[i, :],
+            color="gray",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.6,
+            zorder=3,
+        )
+
+        # Styling
+        ax.set_ylabel(state_labels[i] if state_labels and i < len(state_labels) else f"x_{i}")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+        if i == 0:
+            ax.set_title("State Evolution with Feasibility Bounds")
+        if i == n - 1:
+            ax.set_xlabel("Time (s)")
+
+    plt.tight_layout()
+    return fig, axes
+
+
+def plot_funnel_envelope_detailed(
+    nominal,
+    ellipsoids,
+    constants,  # noqa: ARG001
+    workspace,
+    obstacles,
+    segmented_data,
+    constraints,
+    fig: Optional[plt.Figure] = None,
+) -> Tuple[plt.Figure, Dict[str, Any]]:
+    """Comprehensive feasibility envelope visualization dashboard.
+
+    Creates multi-row figure showing:
+    - Top: Spatial view with ellipsoids along trajectory
+    - Middle: State bounds vs time (one subplot per state)
+    - Bottom: Input bounds vs time (one subplot per input)
+
+    Args:
+        nominal: NominalTrajectory object
+        ellipsoids: Dict with ellipsoid lists
+        constants: UncertaintyConstants object
+        workspace: Workspace object
+        obstacles: List of obstacles
+        segmented_data: SegmentedData object
+        constraints: SystemConstraints object
+        fig: Matplotlib figure (creates new if None)
+
+    Returns:
+        fig: Matplotlib figure
+        axes_dict: Dict with keys 'spatial', 'states', 'inputs' containing axes
+    """
+    n = nominal.state_dim
+    m = nominal.input_dim
+
+    total_rows = 1 + n + m
+
+    if fig is None:
+        fig = plt.figure(figsize=(16, 4 + 3 * n + 3 * m))
+    else:
+        fig.clear()
+
+    gs = fig.add_gridspec(
+        total_rows,
+        1,
+        height_ratios=[4] + [3] * n + [3] * m,
+        hspace=0.4,
+    )
+
+    axes_dict = {}
+
+    # Top: Spatial view
+    ax_spatial = fig.add_subplot(gs[0, 0])
+    plot_ellipsoid_envelope_spatial(
+        nominal,
+        ellipsoids,
+        workspace,
+        obstacles,
+        segmented_data,
+        ax=ax_spatial,
+        sample_every=max(1, segmented_data.num_segments // 8),
+    )
+    axes_dict["spatial"] = ax_spatial
+
+    # Middle: State bounds
+    state_axes = []
+    for i in range(n):
+        ax = fig.add_subplot(gs[1 + i, 0])
+        state_axes.append(ax)
+
+    # Call state bounds plotting
+    _, state_axes = plot_state_bounds_vs_time(
+        nominal,
+        ellipsoids,
+        workspace,
+        obstacles,
+        fig=fig,
+    )
+    axes_dict["states"] = state_axes
+
+    # Bottom: Input bounds (simplified placeholder)
+    input_axes = []
+    for j in range(m):
+        ax = fig.add_subplot(gs[1 + n + j, 0])
+
+        time = np.arange(nominal.N) * nominal.dt
+        ax.plot(time, nominal.u_nom[:, j], color=COLORS["nominal"], linewidth=2, label="Nominal")
+
+        has_u_bounds = hasattr(constraints, "u_min") and hasattr(constraints, "u_max")
+        if has_u_bounds and j < len(constraints.u_min):
+            ax.axhline(constraints.u_min[j], color=COLORS["unsafe"], linestyle="--", linewidth=2, alpha=0.7)
+            ax.axhline(constraints.u_max[j], color=COLORS["unsafe"], linestyle="--", linewidth=2, alpha=0.7)
+
+        ax.set_ylabel(f"u_{j}")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        if j == m - 1:
+            ax.set_xlabel("Time (s)")
+
+        input_axes.append(ax)
+
+    axes_dict["inputs"] = input_axes
+
+    plt.tight_layout()
+    return fig, axes_dict
 
 
 def add_start_goal_markers(
     ax: plt.Axes,
-    x0: np.ndarray,
-    xf: np.ndarray,
+    x_start: np.ndarray,
+    x_goal: np.ndarray,
     is_3d: bool = False,
+) -> None:
+    """Add start and goal markers to axes.
+
+    Args:
+        ax: Matplotlib axes
+        x_start: Start state (first 2 or 3 elements used)
+        x_goal: Goal state (first 2 or 3 elements used)
+        is_3d: Whether this is a 3D plot
+    """
+    if is_3d:
+        ax.plot([x_start[0]], [x_start[1]], [x_start[2]], "o", color=COLORS["start"], markersize=12, label="Start", zorder=10)
+        ax.plot([x_goal[0]], [x_goal[1]], [x_goal[2]], "*", color=COLORS["goal"], markersize=15, label="Goal", zorder=10)
+    else:
+        ax.plot(x_start[0], x_start[1], "o", color=COLORS["start"], markersize=12, label="Start", zorder=10)
+        ax.plot(x_goal[0], x_goal[1], "*", color=COLORS["goal"], markersize=15, label="Goal", zorder=10)
+
+
+def plot_ellipsoid_2d(
+    P: np.ndarray,
+    center: np.ndarray,
+    ax: plt.Axes,
+    n_std: float = 1.0,
+    **kwargs,
+) -> Ellipse:
+    """Plot 2D ellipse from P matrix (convenience wrapper for plot_ellipse_from_P).
+
+    Args:
+        P: Shape matrix (2x2 or larger, uses first 2x2)
+        center: Center point (2D or larger, uses first 2 elements)
+        ax: Matplotlib axes
+        n_std: Scaling factor
+        **kwargs: Additional arguments for Ellipse patch
+
+    Returns:
+        ellipse: Matplotlib Ellipse patch
+    """
+    return plot_ellipse_from_P(P, center, ax, n_std=n_std, **kwargs)
+
+
+def plot_tracking_error(
+    x_nominal: np.ndarray,
+    x_actual: np.ndarray,
+    time: Optional[np.ndarray] = None,
+    ax: Optional[plt.Axes] = None,
 ) -> plt.Axes:
-    """Add start and goal markers to plot.
+    """Plot tracking error over time.
 
     Args:
-        ax: Matplotlib axes
-        x0: Start state
-        xf: Goal state
-        is_3d: Whether this is a 3D plot
+        x_nominal: Nominal state trajectory (N, n)
+        x_actual: Actual state trajectory (N, n)
+        time: Time vector (if None, uses indices)
+        ax: Matplotlib axes (creates new if None)
 
     Returns:
-        ax: Matplotlib axes with markers added
+        ax: Matplotlib axes with tracking error plot
     """
-    if is_3d:
-        ax.scatter(
-            x0[0],
-            x0[1],
-            x0[2],
-            color=COLORS["start"],
-            s=200,
-            marker="o",
-            edgecolors="black",
-            linewidth=2,
-            label="Start",
-            zorder=10,
-        )
-        ax.scatter(
-            xf[0],
-            xf[1],
-            xf[2],
-            color=COLORS["goal"],
-            s=200,
-            marker="*",
-            edgecolors="black",
-            linewidth=2,
-            label="Goal",
-            zorder=10,
-        )
-    else:
-        ax.scatter(
-            x0[0],
-            x0[1],
-            color=COLORS["start"],
-            s=200,
-            marker="o",
-            edgecolors="black",
-            linewidth=2,
-            label="Start",
-            zorder=10,
-        )
-        ax.scatter(
-            xf[0],
-            xf[1],
-            color=COLORS["goal"],
-            s=200,
-            marker="*",
-            edgecolors="black",
-            linewidth=2,
-            label="Goal",
-            zorder=10,
-        )
+    if ax is None:
+        _, ax = setup_figure(figsize=(10, 6))
+
+    if time is None:
+        time = np.arange(len(x_nominal))
+
+    error = x_actual - x_nominal
+    error_norm = np.linalg.norm(error, axis=1)
+
+    ax.plot(time, error_norm, color=COLORS["unsafe"], linewidth=2, label="Tracking Error")
+    ax.set_xlabel("Time (s)", fontsize=11)
+    ax.set_ylabel("Error ||x_actual - x_nominal||", fontsize=11)
+    ax.set_title("Tracking Error vs Time", fontsize=12, fontweight="bold")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
     return ax
 
 
-def set_equal_aspect(ax: plt.Axes, is_3d: bool = False) -> plt.Axes:
-    """Set equal aspect ratio for better visualization.
+def save_figure(fig: plt.Figure, path, **kwargs) -> None:
+    """Save figure to file.
+
+    Args:
+        fig: Matplotlib figure
+        path: Path to save file
+        **kwargs: Additional arguments for savefig
+    """
+    default_kwargs = {"dpi": 300, "bbox_inches": "tight"}
+    default_kwargs.update(kwargs)
+    fig.savefig(path, **default_kwargs)
+
+
+def set_equal_aspect(ax: plt.Axes) -> None:
+    """Set equal aspect ratio for 2D axes.
 
     Args:
         ax: Matplotlib axes
-        is_3d: Whether this is a 3D plot
-
-    Returns:
-        ax: Matplotlib axes with equal aspect
     """
-    if is_3d:
-        # For 3D, set equal aspect for all axes
-        ax.set_box_aspect([1, 1, 1])
-    else:
-        ax.set_aspect("equal", adjustable="box")
+    ax.set_aspect("equal", adjustable="box")
 
-    return ax
+
+# Export key functions
+__all__ = [
+    "COLORS",
+    "add_start_goal_markers",
+    "plot_ellipse_from_P",
+    "plot_ellipsoid_2d",
+    "plot_ellipsoid_envelope_spatial",
+    "plot_funnel_envelope_detailed",
+    "plot_state_bounds_vs_time",
+    "plot_tracking_error",
+    "save_figure",
+    "set_equal_aspect",
+    "setup_figure",
+]

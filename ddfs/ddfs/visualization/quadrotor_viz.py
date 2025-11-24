@@ -247,7 +247,7 @@ def plot_collected_trajectories_3d(
 
     # Plot collected trajectories
     for i, traj in enumerate(traj_to_plot):
-        p_traj = traj.x_traj[:, :3]
+        p_traj = traj.x[:, :3]
 
         ax.plot(
             p_traj[:, 0],

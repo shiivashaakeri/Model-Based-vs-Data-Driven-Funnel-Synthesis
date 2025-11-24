@@ -1,0 +1,27 @@
+================================================================================
+STEP 3: FEASIBILITY ENVELOPES (MVIE)
+================================================================================
+
+These are exact geometric feasibility bounds computed from:
+  - Nominal trajectory (obstacle-free)
+  - Obstacles with safety margin β
+  - Workspace bounds
+  - State/input constraints
+
+Number of segments: 9
+Safety margin β: 0.1
+
+Segment Summary:
+  Segment 0: k=[0:61], timesteps=63, P_min,i volume=1.200810e+02
+  Segment 1: k=[62:123], timesteps=63, P_min,i volume=1.414047e+02
+  Segment 2: k=[124:185], timesteps=63, P_min,i volume=9.883583e+01
+  Segment 3: k=[186:247], timesteps=63, P_min,i volume=1.132725e+02
+  Segment 4: k=[248:309], timesteps=63, P_min,i volume=3.678198e+02
+  Segment 5: k=[310:371], timesteps=63, P_min,i volume=4.895206e+02
+  Segment 6: k=[372:433], timesteps=63, P_min,i volume=9.279080e+01
+  Segment 7: k=[434:495], timesteps=63, P_min,i volume=2.114820e+02
+  Segment 8: k=[496:499], timesteps=5, P_min,i volume=2.114264e+02
+
+✓ Feasibility envelopes computed successfully
+  These ellipsoids define geometrically feasible regions.
+  Uncertainty quantification (Phase 3) will tighten these bounds.
