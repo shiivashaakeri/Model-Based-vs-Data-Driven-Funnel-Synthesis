@@ -28,7 +28,7 @@ ddfs:
 # Solver Settings
 # -----------------------------------------------------------------------------
 solver:
-  name: "MOSEK"         # Solver name: MOSEK, SCS, ECOS, CVXOPT
+  name: "ECOS"          # Solver name: MOSEK, SCS, ECOS, CVXOPT
   verbose: false        # Solver verbosity
   max_iters: 10000      # Maximum solver iterations
   eps_abs: 1.0e-8       # Absolute tolerance
