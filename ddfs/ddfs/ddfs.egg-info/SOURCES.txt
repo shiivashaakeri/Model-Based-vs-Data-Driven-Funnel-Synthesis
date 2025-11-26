@@ -1,7 +1,0 @@
-pyproject.toml
-setup.py
-ddfs/ddfs.egg-info/PKG-INFO
-ddfs/ddfs.egg-info/SOURCES.txt
-ddfs/ddfs.egg-info/dependency_links.txt
-ddfs/ddfs.egg-info/requires.txt
-ddfs/ddfs.egg-info/top_level.txt

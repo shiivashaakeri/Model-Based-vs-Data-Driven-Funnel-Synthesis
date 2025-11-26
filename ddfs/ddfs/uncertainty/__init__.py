@@ -1,2 +1,0 @@
-"""Uncertainty quantification for DDFS."""
-

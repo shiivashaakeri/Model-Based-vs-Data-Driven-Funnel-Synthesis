@@ -1,2 +1,0 @@
-"""Funnel synthesis for DDFS."""
-
